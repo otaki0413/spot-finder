@@ -1,0 +1,40 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc"],
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/dist/**",
+    "**/coverage/**",
+    "**/*.tsbuildinfo",
+    "pnpm-lock.yaml"
+  ],
+  "overrides": [
+    {
+      "files": ["apps/web/**/*.{js,jsx,mjs,cjs,ts,tsx}"],
+      "plugins": ["react", "nextjs", "jsx-a11y"],
+      "env": {
+        "browser": true,
+        "node": true
+      },
+      "rules": {
+        "react/rules-of-hooks": "error",
+        "react/exhaustive-deps": "warn"
+      }
+    },
+    {
+      "files": ["apps/api/**/*.{js,mjs,cjs,ts}"],
+      "env": {
+        "node": true
+      }
+    }
+  ],
+  "settings": {
+    "next": {
+      "rootDir": "apps/web/"
+    }
+  }
+}
