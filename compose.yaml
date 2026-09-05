@@ -1,0 +1,62 @@
+services:
+  db:
+    image: postgres:18.4-bookworm
+    environment:
+      POSTGRES_DB: spot_finder
+      POSTGRES_USER: spot_finder
+      POSTGRES_PASSWORD: spot_finder
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-h",
+          "127.0.0.1",
+          "-U",
+          "spot_finder",
+          "-d",
+          "spot_finder",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build: .
+    init: true
+    command: ["pnpm", "--filter", "@spot-finder/api", "start:dev"]
+    environment:
+      PORT: "3001"
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: spot_finder
+      DB_USER: spot_finder
+      DB_PASSWORD: spot_finder
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - ./apps/api/src:/app/apps/api/src:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: .
+    init: true
+    command: ["pnpm", "--filter", "@spot-finder/web", "dev"]
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+      API_URL: http://api:3001
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./apps/web/src:/app/apps/web/src:ro
+      - ./apps/web/public:/app/apps/web/public:ro
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  postgres_data:

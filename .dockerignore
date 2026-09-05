@@ -1,0 +1,12 @@
+.git
+.codex
+.agents
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/*.tsbuildinfo
+**/.pnpm-store
+**/.env
+**/.env.*
+**/.DS_Store
