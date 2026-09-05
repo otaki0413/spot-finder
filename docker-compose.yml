@@ -47,16 +47,13 @@ services:
     init: true
     command: ["pnpm", "--filter", "@spot-finder/web", "dev"]
     environment:
-      NEXT_TELEMETRY_DISABLED: "1"
       API_URL: http://api:3001
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
       - ./apps/web/src:/app/apps/web/src:ro
-      - ./apps/web/public:/app/apps/web/public:ro
     depends_on:
-      api:
-        condition: service_started
+      - api
 
 volumes:
   postgres_data:
