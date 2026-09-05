@@ -13,7 +13,7 @@ Docker と Docker Compose v2 以降を用意し、Docker を起動してくだ�
 リポジトリのルートで実行します。
 
 ```sh
-docker-compose up
+docker compose up
 ```
 
 - Web: <http://localhost:3000>
@@ -21,7 +21,7 @@ docker-compose up
 
 Web に「API・DBに接続できました」と表示されれば起動完了です。準備中の場合は、少し待って「再確認する」を押してください。
 
-停止は `Ctrl+C`、コンテナの削除は `docker-compose down` で行います。DB データは保持されます。**DB データも削除する場合だけ** `docker-compose down --volumes` を使ってください。
+停止は `Ctrl+C`、コンテナの削除は `docker compose down` で行います。DB データは保持されます。**DB データも削除する場合だけ** `docker compose down --volumes` を使ってください。
 
 ## 開発コマンド
 
@@ -43,7 +43,7 @@ pnpm build         # API / Web のビルド
 `apps/web/src`・`apps/api/src` の変更は自動反映されます。依存関係・設定・`apps/api/test` など、それ以外の変更は再ビルドしてください。
 
 ```sh
-docker-compose up --build -d
+docker compose up --build -d
 ```
 
-ログは `docker-compose logs -f` で確認できます。
+ログは `docker compose logs -f` で確認できます。
