@@ -11,6 +11,7 @@ import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { parse } from "csv-parse/sync";
 import request from "supertest";
 import { DataSource } from "typeorm";
+import type { MigrationInterface, QueryRunner } from "typeorm";
 import {
   afterAll,
   afterEach,
@@ -24,6 +25,7 @@ import {
 import { AppController } from "../src/app.controller.js";
 import { AppService } from "../src/app.service.js";
 import { createDatabaseOptions } from "../src/database/database-options.js";
+import { initializeDatabase } from "../src/database/initialize-database.js";
 import { importSpotSeed, spotSeedFile } from "../src/spots/import-spot-seed.js";
 import { Spot } from "../src/spots/spot.entity.js";
 import { SpotSeedService } from "../src/spots/spot-seed.service.js";
@@ -57,14 +59,14 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
 
     // イメージ側でPostGISが有効化されていないDBからマイグレーションを検証する。
     await admin.query("CREATE DATABASE spot_seed_test TEMPLATE template0");
-    dataSource = await new DataSource({
+    dataSource = await initializeDatabase({
       ...createDatabaseOptions(),
       host: container.getHost(),
       port: container.getPort(),
       username: container.getUsername(),
       password: container.getPassword(),
       database: "spot_seed_test",
-    }).initialize();
+    });
   });
 
   beforeEach(async () => {
@@ -134,6 +136,59 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
     await expect(dataSource.runMigrations()).resolves.toEqual([]);
   });
 
+  it("allows migrations longer than one second but keeps runtime queries within one second", async () => {
+    class SlowMigration1788672000001 implements MigrationInterface {
+      async up(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query("SELECT pg_sleep(1.2)");
+      }
+      async down(): Promise<void> {}
+    }
+
+    const runtime = await initializeDatabase({
+      ...dataSource.options,
+      migrations: [SlowMigration1788672000001],
+    });
+    try {
+      await expect(runtime.showMigrations()).resolves.toBe(false);
+      await runtime.undoLastMigration();
+      const started = performance.now();
+      await expect(runtime.query("SELECT pg_sleep(3)")).rejects.toThrow(
+        "Query read timeout",
+      );
+      expect(performance.now() - started).toBeLessThan(2500);
+    } finally {
+      await runtime.destroy();
+    }
+  });
+
+  it("fails startup and closes the migration connection when a migration fails", async () => {
+    class FailedMigration1788672000002 implements MigrationInterface {
+      async up(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query("SELECT * FROM missing_migration_table");
+      }
+      async down(): Promise<void> {}
+    }
+
+    await expect(
+      initializeDatabase({
+        ...dataSource.options,
+        migrations: [FailedMigration1788672000002],
+        extra: {
+          ...dataSource.options.extra,
+          application_name: "spot-finder-failed-migration-test",
+        },
+      }),
+    ).rejects.toThrow('relation "missing_migration_table" does not exist');
+    await expect
+      .poll(async () =>
+        admin.query(
+          "SELECT pid FROM pg_stat_activity WHERE application_name = $1",
+          ["spot-finder-failed-migration-test"],
+        ),
+      )
+      .toEqual([]);
+  });
+
   it("imports all 200 source records with generated IDs and exact coordinates", async () => {
     await expect(importSpotSeed(dataSource)).resolves.toEqual({
       status: "imported",
@@ -174,7 +229,7 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
     const before = await dataSource
       .getRepository(Spot)
       .find({ order: { id: "ASC" } });
-    const reconnected = await new DataSource(dataSource.options).initialize();
+    const reconnected = await initializeDatabase(dataSource.options);
     try {
       const missingFile = pathToFileURL(
         join(temporaryDirectory, "missing.csv"),

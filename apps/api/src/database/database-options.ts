@@ -12,14 +12,13 @@ export function createDatabaseOptions() {
     password: process.env.DB_PASSWORD ?? "spot_finder",
     entities: [Spot],
     migrations: [CreateSpots1788672000000],
-    migrationsRun: true,
+    migrationsRun: false,
     synchronize: false,
     // 拡張の有効化もマイグレーションで管理する。
     installExtensions: false,
     connectTimeoutMS: 1000,
     extra: {
-      // 初回のPostGIS有効化には通常の疎通確認より時間がかかる。
-      query_timeout: 30_000,
+      query_timeout: 1000,
     },
   } satisfies DataSourceOptions;
 }

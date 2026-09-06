@@ -3,14 +3,18 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import { AppController } from "./app.controller.js";
 import { AppService } from "./app.service.js";
 import { createDatabaseOptions } from "./database/database-options.js";
+import { initializeDatabase } from "./database/initialize-database.js";
 import { SpotSeedService } from "./spots/spot-seed.service.js";
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      ...createDatabaseOptions(),
-      retryAttempts: 5,
-      retryDelay: 1000,
+    TypeOrmModule.forRootAsync({
+      useFactory: () => ({
+        ...createDatabaseOptions(),
+        retryAttempts: 5,
+        retryDelay: 1000,
+      }),
+      dataSourceFactory: initializeDatabase,
     }),
   ],
   controllers: [AppController],
