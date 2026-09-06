@@ -43,6 +43,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Start with an empty database
+        run: docker compose up -d --wait db
+      - name: Check spots before starting the API
+        run: |
+          count=$(docker compose exec -T db psql -U spot_finder -d spot_finder -At \
+            -c "SELECT count(*) FROM spots")
+          test "$count" = 200
+      - name: Start API and Web
         run: docker compose up --build -d
       - name: Check API and database
         run: |
@@ -66,7 +73,10 @@ jobs:
             > "$RUNNER_TEMP/spot-seed-before.json"
           jq --exit-status '.count == 200 and (.ids | unique | length) == 200' \
             "$RUNNER_TEMP/spot-seed-before.json"
-          docker compose restart api
+          docker compose stop api
+          docker compose restart db
+          docker compose up -d --wait db
+          docker compose start api
           curl --fail --silent --show-error \
             --retry 60 --retry-delay 2 --retry-max-time 120 \
             --retry-connrefused --retry-all-errors --max-time 5 \
