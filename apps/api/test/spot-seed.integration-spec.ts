@@ -1,202 +1,61 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import type { Server } from "node:http";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import { Logger } from "@nestjs/common";
-import type { INestApplication } from "@nestjs/common";
-import { Test } from "@nestjs/testing";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { parse } from "csv-parse/sync";
-import request from "supertest";
 import { DataSource } from "typeorm";
-import type { MigrationInterface, QueryRunner } from "typeorm";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
-import { AppController } from "../src/app.controller.js";
-import { AppService } from "../src/app.service.js";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabaseOptions } from "../src/database/database-options.js";
-import { initializeDatabase } from "../src/database/initialize-database.js";
-import { importSpotSeed, spotSeedFile } from "../src/spots/import-spot-seed.js";
 import { Spot } from "../src/spots/spot.entity.js";
-import { SpotSeedService } from "../src/spots/spot-seed.service.js";
 
 const postgisImage =
   "postgis/postgis:18-3.6@sha256:60f6ad1d21ea86a67d47780b9a0d1e1d200500f62b19293fa834d0dea80b8677";
+const seedFile = new URL(
+  "../../../db/seed/landit_coding_test_seed.csv",
+  import.meta.url,
+);
+const initFile = new URL("../../../db/init/20-init-spots.sql", import.meta.url);
+const containerSeedFile = "/seed/landit_coding_test_seed.csv";
+const containerInitFile = "/docker-entrypoint-initdb.d/20-init-spots.sql";
 
-describe("spot seed with PostgreSQL and PostGIS", () => {
+describe("database initialization with PostgreSQL and PostGIS", () => {
   let container: StartedPostgreSqlContainer;
-  let admin: DataSource;
   let dataSource: DataSource;
-  let temporaryDirectory: string;
-  let app: INestApplication<Server> | undefined;
 
-  beforeAll(async () => {
-    temporaryDirectory = await mkdtemp(
-      join(tmpdir(), "spot-finder-seed-test-"),
-    );
-    container = await new PostgreSqlContainer(postgisImage)
-      .withPlatform("linux/amd64")
-      .withStartupTimeout(90_000)
-      .start();
-    admin = await new DataSource({
-      type: "postgres",
-      host: container.getHost(),
-      port: container.getPort(),
-      username: container.getUsername(),
-      password: container.getPassword(),
-      database: container.getDatabase(),
-    }).initialize();
-
-    // イメージ側でPostGISが有効化されていないDBからマイグレーションを検証する。
-    await admin.query("CREATE DATABASE spot_seed_test TEMPLATE template0");
-    dataSource = await initializeDatabase({
+  function connect(database = container.getDatabase()) {
+    return new DataSource({
       ...createDatabaseOptions(),
       host: container.getHost(),
       port: container.getPort(),
       username: container.getUsername(),
       password: container.getPassword(),
-      database: "spot_seed_test",
-    });
-  });
+      database,
+    }).initialize();
+  }
 
-  beforeEach(async () => {
-    await dataSource.query("TRUNCATE TABLE spots RESTART IDENTITY");
-  });
-
-  afterEach(async () => {
-    await app?.close();
-    app = undefined;
-    if (dataSource?.isInitialized) {
-      await dataSource.query(
-        "DROP FUNCTION IF EXISTS fail_seed_insert() CASCADE",
-      );
-    }
-    vi.restoreAllMocks();
+  beforeAll(async () => {
+    container = await new PostgreSqlContainer(postgisImage)
+      .withPlatform("linux/amd64")
+      .withStartupTimeout(90_000)
+      .withCopyFilesToContainer([
+        { source: fileURLToPath(initFile), target: containerInitFile },
+        { source: fileURLToPath(seedFile), target: containerSeedFile },
+      ])
+      .start();
+    dataSource = await connect();
   });
 
   afterAll(async () => {
     if (dataSource?.isInitialized) await dataSource.destroy();
-    if (admin?.isInitialized) await admin.destroy();
     await container?.stop();
-    if (temporaryDirectory) {
-      await rm(temporaryDirectory, { recursive: true, force: true });
-    }
   });
 
-  async function fixtureFile(csv: string): Promise<URL> {
-    const file = join(temporaryDirectory, "seed.csv");
-    await writeFile(file, csv, "utf8");
-    return pathToFileURL(file);
-  }
-
-  async function createApplication(): Promise<INestApplication<Server>> {
-    const module = await Test.createTestingModule({
-      controllers: [AppController],
-      providers: [
-        AppService,
-        SpotSeedService,
-        { provide: DataSource, useValue: dataSource },
-      ],
-    }).compile();
-    app = module.createNestApplication<INestApplication<Server>>();
-    return app;
-  }
-
-  it("geography型の列と空間インデックスを作成し、適用済みのマイグレーションはスキップする", async () => {
-    expect(
-      await dataSource.query(
-        "SELECT extname FROM pg_extension WHERE extname = 'postgis'",
-      ),
-    ).toEqual([{ extname: "postgis" }]);
-    expect(
-      await dataSource.query(`
-      SELECT format_type(atttypid, atttypmod) AS type
-      FROM pg_attribute
-      WHERE attrelid = 'spots'::regclass AND attname = 'location'
-    `),
-    ).toEqual([{ type: "geography(Point,4326)" }]);
-    const indexes: { indexdef: string }[] = await dataSource.query(
-      "SELECT indexdef FROM pg_indexes WHERE tablename = 'spots'",
-    );
-    expect(
-      indexes.some(({ indexdef }) =>
-        indexdef.includes("USING gist (location)"),
-      ),
-    ).toBe(true);
-    await expect(dataSource.runMigrations()).resolves.toEqual([]);
-  });
-
-  it("1秒を超えるマイグレーションは成功し、通常のクエリは1秒でタイムアウトする", async () => {
-    class SlowMigration1788672000001 implements MigrationInterface {
-      async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query("SELECT pg_sleep(1.2)");
-      }
-      async down(): Promise<void> {}
-    }
-
-    const runtime = await initializeDatabase({
-      ...dataSource.options,
-      migrations: [SlowMigration1788672000001],
-    });
-    try {
-      await expect(runtime.showMigrations()).resolves.toBe(false);
-      await runtime.undoLastMigration();
-      const started = performance.now();
-      await expect(runtime.query("SELECT pg_sleep(3)")).rejects.toThrow(
-        "Query read timeout",
-      );
-      expect(performance.now() - started).toBeLessThan(2500);
-    } finally {
-      await runtime.destroy();
-    }
-  });
-
-  it("マイグレーションが失敗した場合は起動を失敗させ、専用の接続を閉じる", async () => {
-    class FailedMigration1788672000002 implements MigrationInterface {
-      async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query("SELECT * FROM missing_migration_table");
-      }
-      async down(): Promise<void> {}
-    }
-
-    await expect(
-      initializeDatabase({
-        ...dataSource.options,
-        migrations: [FailedMigration1788672000002],
-        extra: {
-          ...dataSource.options.extra,
-          application_name: "spot-finder-failed-migration-test",
-        },
-      }),
-    ).rejects.toThrow('relation "missing_migration_table" does not exist');
-    await expect
-      .poll(async () =>
-        admin.query(
-          "SELECT pid FROM pg_stat_activity WHERE application_name = $1",
-          ["spot-finder-failed-migration-test"],
-        ),
-      )
-      .toEqual([]);
-  });
-
-  it("提供データ200件を自動採番したIDと正確な座標で保存する", async () => {
-    await expect(importSpotSeed(dataSource)).resolves.toEqual({
-      status: "imported",
-      count: 200,
-    });
+  it("DB単独の起動で提供データ200件を保存し、Entity経由で正確に読み出せる", async () => {
     const csv = parse<Record<string, string>>(
-      await readFile(spotSeedFile, "utf8"),
-      { columns: true },
+      await readFile(seedFile, "utf8"),
+      {
+        columns: true,
+      },
     );
     const spots = await dataSource
       .getRepository(Spot)
@@ -222,117 +81,78 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
         },
       })),
     );
+    expect(
+      await dataSource.query(`
+      SELECT format_type(atttypid, atttypmod) AS type
+      FROM pg_attribute
+      WHERE attrelid = 'spots'::regclass AND attname = 'location'
+    `),
+    ).toEqual([{ type: "geography(Point,4326)" }]);
+    const indexes: { indexdef: string }[] = await dataSource.query(
+      "SELECT indexdef FROM pg_indexes WHERE tablename = 'spots'",
+    );
+    expect(
+      indexes.some(({ indexdef }) =>
+        indexdef.includes("USING gist (location)"),
+      ),
+    ).toBe(true);
   });
 
-  it("再接続後はCSVを読み直さず、既存のデータとIDを保持する", async () => {
-    await importSpotSeed(dataSource);
+  it("DBを再起動しても初期化を繰り返さず、既存データとIDを保持する", async () => {
     const before = await dataSource
       .getRepository(Spot)
       .find({ order: { id: "ASC" } });
-    const reconnected = await initializeDatabase(dataSource.options);
-    try {
-      const missingFile = pathToFileURL(
-        join(temporaryDirectory, "missing.csv"),
-      );
-      await expect(importSpotSeed(reconnected, missingFile)).resolves.toEqual({
-        status: "skipped",
-        count: 200,
-      });
-      expect(
-        await reconnected.getRepository(Spot).find({ order: { id: "ASC" } }),
-      ).toEqual(before);
-    } finally {
-      await reconnected.destroy();
-    }
-  });
-
-  it("同時に取込を実行しても保存は1回だけ行う", async () => {
-    const results = await Promise.all([
-      importSpotSeed(dataSource),
-      importSpotSeed(dataSource),
-    ]);
-    expect(results.map(({ status }) => status).sort()).toEqual([
-      "imported",
-      "skipped",
-    ]);
-    expect(await dataSource.getRepository(Spot).count()).toBe(200);
-  });
-
-  it("CSVの後続行が不正な場合は先行する正常な行も保存しない", async () => {
-    const file = await fixtureFile(
-      "name,category,lat,long,address\n正常,分類,35,139,住所\n不正,分類,91,139,住所",
-    );
-    await expect(importSpotSeed(dataSource, file)).rejects.toThrow(
-      "CSV 3行目: lat",
-    );
-    expect(await dataSource.getRepository(Spot).count()).toBe(0);
-  });
-
-  it("初期データのファイルがない場合は何も保存せずに失敗する", async () => {
-    const file = pathToFileURL(join(temporaryDirectory, "missing.csv"));
-    await expect(importSpotSeed(dataSource, file)).rejects.toThrow("ENOENT");
-    expect(await dataSource.getRepository(Spot).count()).toBe(0);
-  });
-
-  it("名称と座標が同じ行も別々のスポットとして保存する", async () => {
-    const file = await fixtureFile(
-      "name,category,lat,long,address\n同名,分類,35,139,住所\n同名,分類,35,139,住所",
-    );
-    await importSpotSeed(dataSource, file);
-    const spots = await dataSource
-      .getRepository(Spot)
-      .find({ order: { id: "ASC" } });
-    expect(spots.map(({ id }) => id)).toEqual([1, 2]);
-  });
-
-  it("APIがHTTPリクエストの受付を開始する前に取込を完了する", async () => {
-    const application = await createApplication();
-    await application.listen(0, "127.0.0.1");
-    expect(await dataSource.getRepository(Spot).count()).toBe(200);
-    await request(application.getHttpServer()).get("/health").expect(200);
-  });
-
-  it("保存に失敗した場合は全件を取り消し、APIの受付を開始しない", async () => {
-    await dataSource.query(`
-      CREATE FUNCTION fail_seed_insert() RETURNS trigger AS $$
-      BEGIN
-        IF NEW.id = 2 THEN
-          RAISE EXCEPTION 'simulated seed insert failure';
-        END IF;
-        RETURN NEW;
-      END;
-      $$ LANGUAGE plpgsql
-    `);
-    await dataSource.query(`
-      CREATE TRIGGER fail_seed_insert BEFORE INSERT ON spots
-      FOR EACH ROW EXECUTE FUNCTION fail_seed_insert()
-    `);
-    const logError = vi
-      .spyOn(Logger.prototype, "error")
-      .mockImplementation(() => {});
-    const application = await createApplication();
-    await expect(application.listen(0, "127.0.0.1")).rejects.toThrow(
-      "simulated seed insert failure",
-    );
-    expect(application.getHttpServer().listening).toBe(false);
-    expect(await dataSource.getRepository(Spot).count()).toBe(0);
-    expect(logError).toHaveBeenCalledWith("simulated seed insert failure");
-  });
-
-  it("PostGISを削除せずにテーブルのマイグレーションを取り消して再適用できる", async () => {
-    await dataSource.undoLastMigration();
+    await dataSource.destroy();
+    await container.restart();
+    dataSource = await connect();
     expect(
-      await dataSource.query("SELECT to_regclass('spots') AS name"),
-    ).toEqual([{ name: null }]);
-    expect(
+      await dataSource.getRepository(Spot).find({ order: { id: "ASC" } }),
+    ).toEqual(before);
+  });
+
+  it.each([
+    [
+      "範囲外の緯度",
+      "正常,分類,35,139,住所\n不正,分類,91,139,住所",
+      "spot_seed_lat_check",
+    ],
+    ["必須項目の空欄", '" ",分類,35,139,住所', "spot_seed_name_check"],
+    ["非有限の経度", "不正,分類,35,NaN,住所", "spot_seed_long_check"],
+    ["データ行の欠落", "", "Spot seed CSV contains no data rows"],
+  ])(
+    "%sがあれば初期化に失敗し、テーブル作成と保存をすべて取り消す",
+    async (_, rows, error) => {
       await dataSource.query(
-        "SELECT extname FROM pg_extension WHERE extname = 'postgis'",
-      ),
-    ).toEqual([{ extname: "postgis" }]);
-    await dataSource.runMigrations();
-    await expect(importSpotSeed(dataSource)).resolves.toEqual({
-      status: "imported",
-      count: 200,
-    });
-  });
+        "CREATE DATABASE invalid_seed TEMPLATE template_postgis",
+      );
+      const invalid = await connect("invalid_seed");
+      try {
+        await container.copyContentToContainer([
+          {
+            content: `name,category,lat,long,address\n${rows}`,
+            target: containerSeedFile,
+          },
+        ]);
+        const result = await container.exec([
+          "psql",
+          "-v",
+          "ON_ERROR_STOP=1",
+          "-U",
+          container.getUsername(),
+          "-d",
+          "invalid_seed",
+          "-f",
+          containerInitFile,
+        ]);
+        expect(result.exitCode).not.toBe(0);
+        expect(result.output).toContain(error);
+        expect(
+          await invalid.query("SELECT to_regclass('spots') AS name"),
+        ).toEqual([{ name: null }]);
+      } finally {
+        await invalid.destroy();
+        await dataSource.query("DROP DATABASE invalid_seed");
+      }
+    },
+  );
 });

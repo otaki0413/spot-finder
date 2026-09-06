@@ -1,6 +1,5 @@
 import type { DataSourceOptions } from "typeorm";
 import { Spot } from "../spots/spot.entity.js";
-import { CreateSpots1788672000000 } from "./migrations/1788672000000-create-spots.js";
 
 export function createDatabaseOptions() {
   return {
@@ -11,10 +10,8 @@ export function createDatabaseOptions() {
     username: process.env.DB_USER ?? "spot_finder",
     password: process.env.DB_PASSWORD ?? "spot_finder",
     entities: [Spot],
-    migrations: [CreateSpots1788672000000],
-    migrationsRun: false,
     synchronize: false,
-    // 拡張の有効化もマイグレーションで管理する。
+    // スキーマと拡張はDBコンテナの初回起動時に用意する。
     installExtensions: false,
     connectTimeoutMS: 1000,
     extra: {

@@ -9,6 +9,11 @@ services:
       POSTGRES_PASSWORD: spot_finder
     volumes:
       - postgres_data:/var/lib/postgresql
+      # イメージ同梱の10_postgis.shがDBでPostGIS拡張を有効化する。
+      # 初期化ファイルは名前順に実行されるため、PostGISの型を使うSQLには20を付ける。
+      # ディレクトリ全体をマウントすると10_postgis.shが隠れるため、SQLだけをマウントする。
+      - ./db/init/20-init-spots.sql:/docker-entrypoint-initdb.d/20-init-spots.sql:ro
+      - ./db/seed/landit_coding_test_seed.csv:/seed/landit_coding_test_seed.csv:ro
     healthcheck:
       test:
         [

@@ -23,25 +23,27 @@ docker compose up
 
 Web に「API・DBに接続できました」と表示されれば起動完了です。準備中の場合は、少し待って「再確認する」を押してください。
 
-APIは、マイグレーションとスポットの初期データ取込を完了してからリクエストの受付を開始します。
+DBの初回初期化でスポットを取り込み、DBの起動完了後にAPIを起動します。
 
 停止は `Ctrl+C`、コンテナの削除は `docker compose down` で行います。DB データは保持されます。**DB データも削除する場合だけ** `docker compose down --volumes` を使ってください。
 
 ## スポットの初期データ
 
-提供された [landit_coding_test_seed.csv](apps/api/data/landit_coding_test_seed.csv) の200件を使用します。課題本文の「約500件」とは件数が異なりますが、提供ファイルの内容をそのまま同梱しています。
+提供された [landit_coding_test_seed.csv](db/seed/landit_coding_test_seed.csv) の200件を使用します。課題本文の「約500件」とは件数が異なりますが、提供ファイルの内容をそのまま同梱しています。
 
-- CSVはDockerイメージのビルド時にコピーされ、起動時にAPIが読み込みます。
-- TypeORMのマイグレーションでPostGISの有効化を確認し、スポットテーブルと空間インデックスを作成します。
-- スポットテーブルが空なら全件を1つのトランザクションで取り込みます。データが存在すればスキップするため、DBを保持した再起動では既存のIDも変わりません。
-- 必須項目の空欄、不正なCSV形式、範囲外・非数値の座標などがあれば取込を失敗させます。CSVの行番号と原因をログに出し、部分的なデータを残さずAPIの起動を停止します。
+- SQLとCSVをDBコンテナに読み取り専用でマウントします。PostGISイメージによる拡張の有効化後に、[初期化SQL](db/init/20-init-spots.sql)を実行します。
+- PostgreSQL標準の `COPY` でCSVを読み込み、スポットテーブルの作成・全件の保存・空間インデックスの作成を1つのトランザクションで行います。
+- 初期化SQLはDBのデータディレクトリが空の初回だけ実行されます。ボリュームを保持した再起動では既存のデータとIDを保持します。
+- 必須項目の空欄、不正なCSV形式、範囲外・非数値の座標などがあれば、部分的なデータを残さず初期化に失敗します。原因は `docker compose logs db` で確認できます。`COPY` 中のエラーにはCSVの行番号も出力されます。
 - CSVは固定の初期データとして扱います。差し替え時の更新・削除同期や、手動で削除された一部データの補完は行いません。
 
-取込完了専用テーブルは設けず、空テーブルの判定と保存の間をロックして二重取込を防ぎます。テーブル定義の変更履歴はTypeORMの `migrations` テーブルで管理します。
+APIはTypeORMのEntityで既存テーブルを利用し、スキーマの変更やCSVの取込は行いません。取込完了テーブルやマイグレーション履歴テーブルも作成しません。
+
+既存ボリュームには、SQLやCSVを変更しても反映されません。また、初期化途中で失敗した場合も、再起動だけでは初期化SQLが再実行されません。開発用データをすべて削除してよい場合に限り、原因を修正したうえで `docker compose down --volumes` → `docker compose up` で作り直してください。
 
 座標は `geography(Point, 4326)` に保存し、後続の半径検索に使用します。用語は [CONTEXT.md](CONTEXT.md)、PostGISの採用理由は [ADR](docs/adr/0001-use-postgis-for-spot-locations.md) を参照してください。
 
-CSVの解析には `csv-parse` を使用し、カンマ・引用符・改行を含む値もCSVの形式に沿って扱います。
+CSV内のカンマ・引用符・改行は、PostgreSQLのCSV形式に沿って扱います。
 
 ## 開発コマンド
 
@@ -55,11 +57,11 @@ pnpm format        # 自動整形
 pnpm typecheck     # 型チェック
 pnpm test          # API の単体テスト
 pnpm test:e2e      # API の HTTP テスト
-pnpm test:integration # 実DBでのマイグレーション・取込テスト（Dockerが必要）
+pnpm test:integration # 実DBでの初期化・取込テスト（Dockerが必要）
 pnpm build         # API / Web のビルド
 ```
 
-単体・HTTPテストはDB接続をモックに差し替えています。`test:integration` はTestcontainersでテスト専用のPostGISコンテナを起動し、保存内容・再取込・同時取込・失敗時の取消とAPI起動停止を確認します。開発用DBは使用しません。
+単体・HTTPテストはDB接続をモックに差し替えています。`test:integration` はTestcontainersでテスト専用のPostGISコンテナを起動し、DB単独での取込・Entity経由の保存内容・DB再起動時のデータ保持・不正データによる初期化の取消を確認します。開発用DBは使用しません。
 
 `apps/web/src`・`apps/api/src` の変更は自動反映されます。依存関係・設定・`apps/api/test` など、それ以外の変更は再ビルドしてください。
 
@@ -81,5 +83,5 @@ docker compose up --build -d
 
 GitHub Actions は `main` 向け PR と `main` への push で、lint・整形・型チェック・
 API テスト・実DBテスト・ビルドを実行します。別ジョブでは空の DB から Docker Compose で起動し、
-API の DB 接続成功、スポット200件の取込、API再起動前後の件数・IDの一致、Web の HTTP 200 を確認します。
+DB単独でのスポット200件の取込、API の DB 接続成功、DB・API再起動前後の件数・IDの一致、Web の HTTP 200 を確認します。
 この起動確認は画面操作のテストを含みません。
