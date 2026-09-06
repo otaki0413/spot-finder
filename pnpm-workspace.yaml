@@ -2,4 +2,8 @@ packages:
   - apps/*
 
 allowBuilds:
+  # ローカルDockerでのテストに不要なSSH用ネイティブ拡張とバージョン通知。
+  cpu-features: false
   lefthook: true
+  protobufjs: false
+  ssh2: false
