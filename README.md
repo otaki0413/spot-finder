@@ -41,9 +41,19 @@ APIはTypeORMのEntityで既存テーブルを利用し、スキーマの変更�
 
 既存ボリュームには、SQLやCSVを変更しても反映されません。また、初期化途中で失敗した場合も、再起動だけでは初期化SQLが再実行されません。開発用データをすべて削除してよい場合に限り、原因を修正したうえで `docker compose down --volumes` → `docker compose up` で作り直してください。
 
-座標は `geography(Point, 4326)` に保存し、後続の半径検索に使用します。用語は [CONTEXT.md](CONTEXT.md)、PostGISの採用理由は [ADR](docs/adr/0001-use-postgis-for-spot-locations.md) を参照してください。
+座標は `geography(Point, 4326)` に保存し、半径検索に使用します。用語は [CONTEXT.md](CONTEXT.md)、PostGISの採用理由は [ADR](docs/adr/0001-use-postgis-for-spot-locations.md) を参照してください。
 
 CSV内のカンマ・引用符・改行は、PostgreSQLのCSV形式に沿って扱います。
+
+## 周辺検索API
+
+```sh
+curl 'http://localhost:3001/spots/nearby?latitude=35.6812&longitude=139.7671&radiusKm=1.5'
+```
+
+緯度（−90〜90）、経度（−180〜180）、検索半径（km）をすべて指定します。半径は正の有限数値で、小数も使えます。mへの変換後に非有限となる値は受け付けません。未指定・空欄・不正値・重複・未知のパラメータは400を返します。
+
+地表上の距離が半径以下のスポットを全件、距離の昇順・同距離ならIDの昇順で返します。応答は `id`・`name`・`category`・`address`・`latitude`・`longitude`・`distanceMeters` を持つオブジェクトの配列です。距離はメートル単位で、表示用の丸めは行いません。該当なしは200と `[]`、DB検索の失敗は503と `Spot search unavailable` を返します。
 
 ## 開発コマンド
 
@@ -57,11 +67,11 @@ pnpm format        # 自動整形
 pnpm typecheck     # 型チェック
 pnpm test          # API の単体テスト
 pnpm test:e2e      # API の HTTP テスト
-pnpm test:integration # 実DBでの初期化・取込テスト（Dockerが必要）
+pnpm test:integration # 実DBでの初期化・取込・周辺検索テスト（Dockerが必要）
 pnpm build         # API / Web のビルド
 ```
 
-単体・HTTPテストはDB接続をモックに差し替えています。`test:integration` はTestcontainersでテスト専用のPostGISコンテナを起動し、DB単独での取込・Entity経由の保存内容・DB再起動時のデータ保持・不正データによる初期化の取消を確認します。開発用DBは使用しません。
+単体・HTTPテストはDB接続をモックに差し替えています。`test:integration` はTestcontainersでテスト専用のPostGISコンテナを起動し、DB単独での取込・Entity経由の保存内容・DB再起動時のデータ保持・不正データによる初期化の取消に加え、HTTP経由の周辺検索で距離境界・並び順・座標・距離・0件を確認します。開発用DBは使用しません。
 
 `apps/web/src`・`apps/api/src` の変更は自動反映されます。依存関係・設定・`apps/api/test` など、それ以外の変更は再ビルドしてください。
 
