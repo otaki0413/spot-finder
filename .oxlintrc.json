@@ -5,6 +5,7 @@
     "correctness": "error"
   },
   "ignorePatterns": [
+    ".agents/skills/**",
     "**/node_modules/**",
     "**/.next/**",
     "**/dist/**",

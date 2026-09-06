@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.20.0"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:e2e
+      - run: pnpm build
+
+  compose:
+    name: Compose smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COMPOSE_PROJECT_NAME: spot-finder-ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Start with an empty database
+        run: docker compose up --build -d
+      - name: Check API and database
+        run: |
+          curl --fail --silent --show-error \
+            --retry 60 --retry-delay 2 --retry-max-time 120 \
+            --retry-connrefused --retry-all-errors --max-time 5 \
+            http://127.0.0.1:3001/health \
+            | jq --exit-status '.status == "ok" and .database == "ok"'
+      - name: Check Web
+        run: |
+          status=$(curl --fail --silent --show-error \
+            --retry 60 --retry-delay 2 --retry-max-time 120 \
+            --retry-connrefused --retry-all-errors --max-time 15 \
+            --output /dev/null --write-out '%{http_code}' \
+            http://127.0.0.1:3000)
+          test "$status" = 200
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Clean up
+        if: always()
+        run: docker compose down --volumes --remove-orphans

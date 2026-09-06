@@ -12,6 +12,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web/package.json ./apps/web/package.json
-RUN pnpm install --frozen-lockfile
+# コンテナには Git 管理情報を含めないため、hooks のインストールを省く。
+RUN CI=true pnpm install --frozen-lockfile
 
 COPY . .

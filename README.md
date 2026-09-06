@@ -47,3 +47,18 @@ docker compose up --build -d
 ```
 
 ログは `docker compose logs -f` で確認できます。
+
+## コード品質のチェック
+
+ホストで `pnpm install` を実行すると、Lefthook が Git hooks を設定します。
+既存の `node_modules` を再利用して hooks が設定されない場合は、
+`pnpm exec lefthook install` を実行してください。
+
+- pre-commit: ステージしたファイルを Prettier で自動整形し、Oxlint で検査します。
+- pre-push: Web・API の型チェック、API の単体・HTTP テストを実行します。
+- lint は警告がある場合も失敗します。導入済みの `.agents/skills/` は整形・lint の対象外です。
+
+GitHub Actions は `main` 向け PR と `main` への push で、lint・整形・型チェック・
+API テスト・ビルドを実行します。別ジョブでは空の DB から Docker Compose で起動し、
+API の DB 接続成功と Web の HTTP 200 を確認します。
+この起動確認は画面操作のテストを含みません。
