@@ -31,6 +31,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:e2e
+      - run: pnpm test:integration
       - run: pnpm build
 
   compose:
@@ -42,6 +43,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Start with an empty database
+        run: docker compose up -d --wait db
+      - name: Check spots before starting the API
+        run: |
+          count=$(docker compose exec -T db psql -U spot_finder -d spot_finder -At \
+            -c "SELECT count(*) FROM spots")
+          test "$count" = 200
+      - name: Start API and Web
         run: docker compose up --build -d
       - name: Check API and database
         run: |
@@ -58,6 +66,26 @@ jobs:
             --output /dev/null --write-out '%{http_code}' \
             http://127.0.0.1:3000)
           test "$status" = 200
+      - name: Check imported spots and preserve IDs across restart
+        run: |
+          docker compose exec -T db psql -U spot_finder -d spot_finder -At \
+            -c "SELECT json_build_object('count', count(*), 'ids', array_agg(id ORDER BY id)) FROM spots" \
+            > "$RUNNER_TEMP/spot-seed-before.json"
+          jq --exit-status '.count == 200 and (.ids | unique | length) == 200' \
+            "$RUNNER_TEMP/spot-seed-before.json"
+          docker compose stop api
+          docker compose restart db
+          docker compose up -d --wait db
+          docker compose start api
+          curl --fail --silent --show-error \
+            --retry 60 --retry-delay 2 --retry-max-time 120 \
+            --retry-connrefused --retry-all-errors --max-time 5 \
+            http://127.0.0.1:3001/health \
+            | jq --exit-status '.status == "ok" and .database == "ok"'
+          docker compose exec -T db psql -U spot_finder -d spot_finder -At \
+            -c "SELECT json_build_object('count', count(*), 'ids', array_agg(id ORDER BY id)) FROM spots" \
+            > "$RUNNER_TEMP/spot-seed-after.json"
+          cmp "$RUNNER_TEMP/spot-seed-before.json" "$RUNNER_TEMP/spot-seed-after.json"
       - name: Show logs on failure
         if: failure()
         run: docker compose logs --no-color

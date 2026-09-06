@@ -24,7 +24,7 @@ describe("AppController", () => {
     await app.close();
   });
 
-  it("checks the database before returning a healthy status", async () => {
+  it("DBへの疎通を確認してから正常な状態を返す", async () => {
     dataSource.query.mockResolvedValue([{ result: 1 }]);
 
     await expect(appController.getHealth()).resolves.toEqual({
@@ -34,7 +34,7 @@ describe("AppController", () => {
     expect(dataSource.query).toHaveBeenCalledExactlyOnceWith("SELECT 1");
   });
 
-  it("converts database query failures to a generic unavailable error", async () => {
+  it("DBクエリに失敗した場合は内部情報を含まない利用不可エラーを返す", async () => {
     dataSource.query.mockRejectedValue(
       new Error("Internal database error details"),
     );

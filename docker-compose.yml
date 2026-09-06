@@ -1,12 +1,19 @@
 services:
   db:
-    image: postgres:18.4-bookworm
+    image: postgis/postgis:18-3.6@sha256:60f6ad1d21ea86a67d47780b9a0d1e1d200500f62b19293fa834d0dea80b8677
+    # PostGIS提供イメージはamd64のみ。Apple Siliconではエミュレーションを使う。
+    platform: linux/amd64
     environment:
       POSTGRES_DB: spot_finder
       POSTGRES_USER: spot_finder
       POSTGRES_PASSWORD: spot_finder
     volumes:
       - postgres_data:/var/lib/postgresql
+      # イメージ同梱の10_postgis.shがDBでPostGIS拡張を有効化する。
+      # 初期化ファイルは名前順に実行されるため、PostGISの型を使うSQLには20を付ける。
+      # ディレクトリ全体をマウントすると10_postgis.shが隠れるため、SQLだけをマウントする。
+      - ./db/init/20-init-spots.sql:/docker-entrypoint-initdb.d/20-init-spots.sql:ro
+      - ./db/seed/landit_coding_test_seed.csv:/seed/landit_coding_test_seed.csv:ro
     healthcheck:
       test:
         [
