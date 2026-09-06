@@ -6,6 +6,7 @@ import { DataSource } from "typeorm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppController } from "../src/app.controller.js";
 import { AppService } from "../src/app.service.js";
+import { StandardSchemaValidationPipe } from "@nestjs/common";
 
 describe("AppController (e2e)", () => {
   let app: INestApplication<App>;
@@ -19,6 +20,7 @@ describe("AppController (e2e)", () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.useGlobalPipes(new StandardSchemaValidationPipe());
     await app.init();
   });
 

@@ -9,6 +9,7 @@ import { DataSource } from "typeorm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabaseOptions } from "../src/database/database-options.js";
 import { SpotsModule } from "../src/spots/spots.module.js";
+import { StandardSchemaValidationPipe } from "@nestjs/common";
 import type { NearbySpot } from "../src/spots/spots.service.js";
 
 const image =
@@ -39,6 +40,7 @@ describe("周辺検索HTTPと実PostGIS", () => {
       ],
     }).compile();
     app = module.createNestApplication();
+    app.useGlobalPipes(new StandardSchemaValidationPipe());
     await app.init();
     database = app.get(DataSource);
     await database.query(`CREATE TABLE spots (

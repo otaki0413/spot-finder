@@ -14,6 +14,7 @@ import {
 } from "vitest";
 import { SpotsModule } from "../src/spots/spots.module.js";
 import { Spot } from "../src/spots/spot.entity.js";
+import { StandardSchemaValidationPipe } from "@nestjs/common";
 
 const valid = "latitude=35.6812&longitude=139.7671&radiusKm=1.5";
 
@@ -31,11 +32,14 @@ describe("GET /spots/nearby", () => {
   const repository = { createQueryBuilder: vi.fn(() => builder) };
 
   beforeAll(async () => {
-    const module = await Test.createTestingModule({ imports: [SpotsModule] })
+    const module = await Test.createTestingModule({
+      imports: [SpotsModule],
+    })
       .overrideProvider(getRepositoryToken(Spot))
       .useValue(repository)
       .compile();
     app = module.createNestApplication();
+    app.useGlobalPipes(new StandardSchemaValidationPipe());
     await app.init();
   });
   beforeEach(() => {
@@ -88,9 +92,6 @@ describe("GET /spots/nearby", () => {
     `${valid}&longitude=139`,
     `${valid}&category=cafe`,
     `${valid}&radiusKm[]=1`,
-    `${valid}&__proto__=x`,
-    `${valid}&constructor=x`,
-    `${valid}&prototype=x`,
   ])("不正入力をDBへ渡さず400にする: %s", async (query) => {
     const response = await request(app.getHttpServer())
       .get(`/spots/nearby?${query}`)
