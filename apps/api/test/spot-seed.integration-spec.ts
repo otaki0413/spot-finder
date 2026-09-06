@@ -112,7 +112,7 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
     return app;
   }
 
-  it("creates the geography column and spatial index, and skips applied migrations", async () => {
+  it("geography型の列と空間インデックスを作成し、適用済みのマイグレーションはスキップする", async () => {
     expect(
       await dataSource.query(
         "SELECT extname FROM pg_extension WHERE extname = 'postgis'",
@@ -136,7 +136,7 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
     await expect(dataSource.runMigrations()).resolves.toEqual([]);
   });
 
-  it("allows migrations longer than one second but keeps runtime queries within one second", async () => {
+  it("1秒を超えるマイグレーションは成功し、通常のクエリは1秒でタイムアウトする", async () => {
     class SlowMigration1788672000001 implements MigrationInterface {
       async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query("SELECT pg_sleep(1.2)");
@@ -161,7 +161,7 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
     }
   });
 
-  it("fails startup and closes the migration connection when a migration fails", async () => {
+  it("マイグレーションが失敗した場合は起動を失敗させ、専用の接続を閉じる", async () => {
     class FailedMigration1788672000002 implements MigrationInterface {
       async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query("SELECT * FROM missing_migration_table");
@@ -189,7 +189,7 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
       .toEqual([]);
   });
 
-  it("imports all 200 source records with generated IDs and exact coordinates", async () => {
+  it("提供データ200件を自動採番したIDと正確な座標で保存する", async () => {
     await expect(importSpotSeed(dataSource)).resolves.toEqual({
       status: "imported",
       count: 200,
@@ -224,7 +224,7 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
     );
   });
 
-  it("preserves the existing rows and IDs after reconnecting, without rereading the CSV", async () => {
+  it("再接続後はCSVを読み直さず、既存のデータとIDを保持する", async () => {
     await importSpotSeed(dataSource);
     const before = await dataSource
       .getRepository(Spot)
@@ -246,7 +246,7 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
     }
   });
 
-  it("imports only once when two startup attempts overlap", async () => {
+  it("同時に取込を実行しても保存は1回だけ行う", async () => {
     const results = await Promise.all([
       importSpotSeed(dataSource),
       importSpotSeed(dataSource),
@@ -258,7 +258,7 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
     expect(await dataSource.getRepository(Spot).count()).toBe(200);
   });
 
-  it("does not save valid earlier rows when a later CSV row is invalid", async () => {
+  it("CSVの後続行が不正な場合は先行する正常な行も保存しない", async () => {
     const file = await fixtureFile(
       "name,category,lat,long,address\n正常,分類,35,139,住所\n不正,分類,91,139,住所",
     );
@@ -268,13 +268,13 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
     expect(await dataSource.getRepository(Spot).count()).toBe(0);
   });
 
-  it("fails without saving anything when the seed file is missing", async () => {
+  it("初期データのファイルがない場合は何も保存せずに失敗する", async () => {
     const file = pathToFileURL(join(temporaryDirectory, "missing.csv"));
     await expect(importSpotSeed(dataSource, file)).rejects.toThrow("ENOENT");
     expect(await dataSource.getRepository(Spot).count()).toBe(0);
   });
 
-  it("allows separate source rows with identical names and coordinates", async () => {
+  it("名称と座標が同じ行も別々のスポットとして保存する", async () => {
     const file = await fixtureFile(
       "name,category,lat,long,address\n同名,分類,35,139,住所\n同名,分類,35,139,住所",
     );
@@ -285,14 +285,14 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
     expect(spots.map(({ id }) => id)).toEqual([1, 2]);
   });
 
-  it("finishes the import before the API starts accepting HTTP requests", async () => {
+  it("APIがHTTPリクエストの受付を開始する前に取込を完了する", async () => {
     const application = await createApplication();
     await application.listen(0, "127.0.0.1");
     expect(await dataSource.getRepository(Spot).count()).toBe(200);
     await request(application.getHttpServer()).get("/health").expect(200);
   });
 
-  it("rolls back a failed insert and does not start the API", async () => {
+  it("保存に失敗した場合は全件を取り消し、APIの受付を開始しない", async () => {
     await dataSource.query(`
       CREATE FUNCTION fail_seed_insert() RETURNS trigger AS $$
       BEGIN
@@ -319,7 +319,7 @@ describe("spot seed with PostgreSQL and PostGIS", () => {
     expect(logError).toHaveBeenCalledWith("simulated seed insert failure");
   });
 
-  it("can revert and reapply the table migration without removing PostGIS", async () => {
+  it("PostGISを削除せずにテーブルのマイグレーションを取り消して再適用できる", async () => {
     await dataSource.undoLastMigration();
     expect(
       await dataSource.query("SELECT to_regclass('spots') AS name"),

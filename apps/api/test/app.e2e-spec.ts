@@ -22,7 +22,7 @@ describe("AppController (e2e)", () => {
     await app.init();
   });
 
-  it("GET /health responds with 200 when the database query succeeds", async () => {
+  it("DBクエリが成功した場合はGET /healthが200を返す", async () => {
     dataSource.query.mockResolvedValue([{ result: 1 }]);
 
     await request(app.getHttpServer())
@@ -32,7 +32,7 @@ describe("AppController (e2e)", () => {
     expect(dataSource.query).toHaveBeenCalledExactlyOnceWith("SELECT 1");
   });
 
-  it("GET /health responds with a generic 503 when the database query fails", async () => {
+  it("DBクエリが失敗した場合はGET /healthが内部情報を含まない503を返す", async () => {
     dataSource.query.mockRejectedValue(
       new Error("Internal database error details"),
     );

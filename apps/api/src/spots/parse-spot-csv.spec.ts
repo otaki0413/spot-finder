@@ -15,7 +15,7 @@ function csvWithRow(values: string[]) {
 }
 
 describe("parseSpotCsv", () => {
-  it("preserves the spot information and puts longitude before latitude", () => {
+  it("スポットの情報を保持し、座標を経度・緯度の順に並べる", () => {
     expect(parseSpotCsv(csvWithRow(validRow))).toEqual([
       {
         name: "東京タワー",
@@ -26,7 +26,7 @@ describe("parseSpotCsv", () => {
     ]);
   });
 
-  it("accepts quoted commas, escaped quotes, line breaks, BOM and CRLF", () => {
+  it("引用符内のカンマ・エスケープされた引用符・改行・BOM・CRLFを受け付ける", () => {
     const csv = `\uFEFF${header}\r\n"名称,""別名""",分類,35,139,"住所\r\n建物"\r\n`;
     expect(parseSpotCsv(csv)[0]).toMatchObject({
       name: '名称,"別名"',
@@ -41,7 +41,7 @@ describe("parseSpotCsv", () => {
     ["category", 1],
     ["address", 4],
   ] as const)(
-    "rejects an empty or whitespace-only %s with its line number",
+    "%sが空欄または空白のみの場合は行番号付きのエラーを返す",
     (column, index) => {
       for (const emptyValue of ["", '"  "']) {
         const row = [...validRow];
@@ -64,39 +64,47 @@ describe("parseSpotCsv", () => {
     ["long", 3, "139east"],
     ["lat", 2, "0x20"],
     ["lat", 2, "1e999"],
-  ] as const)("rejects invalid %s at column %s: %s", (column, index, value) => {
-    const row = [...validRow];
-    row[index] = value;
-    expect(() => parseSpotCsv(csvWithRow(row))).toThrow(`CSV 2行目: ${column}`);
-  });
+  ] as const)(
+    "不正な%sを拒否する（列インデックス: %s、値: %s）",
+    (column, index, value) => {
+      const row = [...validRow];
+      row[index] = value;
+      expect(() => parseSpotCsv(csvWithRow(row))).toThrow(
+        `CSV 2行目: ${column}`,
+      );
+    },
+  );
 
   it.each([
     ["90", "180"],
     ["-90", "-180"],
     ["0", "0"],
-  ])("accepts coordinate boundaries lat=%s, long=%s", (latitude, longitude) => {
-    const row = [...validRow];
-    row[2] = latitude;
-    row[3] = longitude;
-    expect(parseSpotCsv(csvWithRow(row))[0].location.coordinates).toEqual([
-      Number(longitude),
-      Number(latitude),
-    ]);
-  });
+  ])(
+    "座標の境界値を受け付ける（緯度: %s、経度: %s）",
+    (latitude, longitude) => {
+      const row = [...validRow];
+      row[2] = latitude;
+      row[3] = longitude;
+      expect(parseSpotCsv(csvWithRow(row))[0].location.coordinates).toEqual([
+        Number(longitude),
+        Number(latitude),
+      ]);
+    },
+  );
 
-  it("reports the source line when a later record has an invalid coordinate", () => {
+  it("後続のレコードに不正な座標がある場合は元の行番号を返す", () => {
     expect(() =>
       parseSpotCsv(`${header}\n${validRow.join(",")}\n地点,分類,999,139,住所`),
     ).toThrow("CSV 3行目: lat");
   });
 
-  it("keeps separate rows even when names or coordinates match", () => {
+  it("名称や座標が一致しても別々の行として保持する", () => {
     expect(
       parseSpotCsv(`${header}\n${validRow.join(",")}\n${validRow.join(",")}`),
     ).toHaveLength(2);
   });
 
-  it("rejects missing or unexpected header columns", () => {
+  it("ヘッダーの列が不足している場合や列の並びが異なる場合は拒否する", () => {
     expect(() => parseSpotCsv("name,lat,long\n地点,35,139")).toThrow(
       "CSV 1行目",
     );
@@ -105,7 +113,7 @@ describe("parseSpotCsv", () => {
     ).toThrow("CSV 1行目");
   });
 
-  it("rejects malformed CSV with the source line", () => {
+  it("CSV形式が不正な場合は行番号付きのエラーを返す", () => {
     expect(() => parseSpotCsv(`${header}\n地点,分類,35,139`)).toThrow(
       "CSV 2行目: CSV形式が不正です",
     );
@@ -114,7 +122,7 @@ describe("parseSpotCsv", () => {
     );
   });
 
-  it.each(["", header])("rejects CSV with no spot records", (csv) => {
+  it.each(["", header])("スポットデータがないCSVを拒否する", (csv) => {
     expect(() => parseSpotCsv(csv)).toThrow("スポットデータがありません");
   });
 });
