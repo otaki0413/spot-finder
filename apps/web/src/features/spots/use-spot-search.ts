@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   INITIAL_CENTER,
@@ -28,18 +28,18 @@ export function useSpotSearch() {
     enabled: false,
   });
 
-  const update = useCallback((next: typeof initialState) => {
+  function update(next: typeof initialState) {
     current.current = next;
     setState(next);
-  }, []);
+  }
 
-  const cancelSearch = useCallback(() => {
+  function cancelSearch() {
     const { searchCenter, radiusKm } = current.current;
     void client.cancelQueries({
       queryKey: nearbySpotsOptions(searchCenter, radiusKm).queryKey,
       exact: true,
     });
-  }, [client]);
+  }
 
   function search(center: Center, radiusKm: number) {
     update({
@@ -89,12 +89,12 @@ export function useSpotSearch() {
     search(previous.center, radiusKm);
   }
 
-  // APIProviderはonErrorの変更でもローダーを実行するため、参照を固定する。
-  const failMap = useCallback(() => {
+  // APIProviderのEffect再実行を避けるため、Compilerによる参照の安定化を維持する。
+  function failMap() {
     if (current.current.mapFailed) return;
     cancelSearch();
     update({ ...current.current, mapFailed: true });
-  }, [cancelSearch, update]);
+  }
 
   function retry() {
     const previous = current.current;

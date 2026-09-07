@@ -264,8 +264,11 @@ describe("地図操作に伴うスポット検索", () => {
     const pending = pendingResponse();
     fetchMock.mockReturnValueOnce(pending.promise);
     const { result } = setup();
+    const failMap = result.current.failMap;
     act(() => result.current.idle(INITIAL_CENTER));
-    act(() => result.current.failMap());
+    // APIProviderのEffectを再実行せず、初回のコールバックでも最新の検索を中断する。
+    expect(result.current.failMap).toBe(failMap);
+    act(() => failMap());
     expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
     await act(async () => pending.resolve(response()));
     act(() => {
@@ -274,6 +277,7 @@ describe("地図操作に伴うスポット検索", () => {
       result.current.retry();
     });
     expect(result.current.mapFailed).toBe(true);
+    expect(result.current.failMap).toBe(failMap);
     expect(result.current.spots).toBeUndefined();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
