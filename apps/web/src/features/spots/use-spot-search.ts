@@ -50,11 +50,9 @@ export function useSpotSearch() {
       ready: true,
       moving: false,
     });
-    // fetchQueryは同一条件の通信をまとめ、鮮度内の結果があれば通信せず返す。
+    // client.queryは同一条件の通信をまとめ、鮮度内の結果があれば通信せず返す。
     // 失敗はqueryの状態から表示するため、イベントのPromiseには伝播させない。
-    void client
-      .fetchQuery(nearbySpotsOptions(center, radiusKm))
-      .catch(() => {});
+    void client.query(nearbySpotsOptions(center, radiusKm)).catch(() => {});
   }
 
   function centerChanged(center: Center) {
