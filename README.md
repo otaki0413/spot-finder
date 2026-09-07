@@ -107,13 +107,13 @@ pnpm lint          # lint
 pnpm format:check  # 整形チェック
 pnpm format        # 自動整形
 pnpm typecheck     # 型チェック
-pnpm test          # API の単体テスト・Web の検索状態とUIのテスト
+pnpm test          # API の単体テスト・Web の検索ロジックのテスト
 pnpm test:e2e      # API の HTTP テスト
 pnpm test:integration # 実DBでの初期化・取込・周辺検索テスト（Dockerが必要）
 pnpm build         # API / Web のビルド
 ```
 
-APIの単体・HTTPテストはDB接続をモックに差し替えています。WebのテストはVitest・React Testing Libraryで入力・検索状態・キャッシュ・遅い応答の無効化を確認し、Google Mapsや実ネットワークには接続しません。`test:integration` はTestcontainersでテスト専用のPostGISコンテナを起動し、DB単独での取込・Entity経由の保存内容・DB再起動時のデータ保持・不正データによる初期化の取消に加え、HTTP経由の周辺検索で距離境界・並び順・座標・距離・0件を確認します。開発用DBは使用しません。
+APIの単体・HTTPテストはDB接続をモックに差し替えています。Webのテストは検索半径の値の検証と、検索状態・通信中断・キャッシュ・遅い応答の無効化に絞っています。Vitest・React Testing Libraryの `renderHook` でロジックを確認し、画面表示・DOM操作・Google Mapsの描画はテストしません。実ネットワークにも接続しません。`test:integration` はTestcontainersでテスト専用のPostGISコンテナを起動し、DB単独での取込・Entity経由の保存内容・DB再起動時のデータ保持・不正データによる初期化の取消に加え、HTTP経由の周辺検索で距離境界・並び順・座標・距離・0件を確認します。開発用DBは使用しません。
 
 `apps/web/src`・`apps/api/src` の変更は自動反映されます。依存関係・設定・`apps/api/test` など、それ以外の変更は再ビルドしてください。
 
@@ -130,7 +130,7 @@ docker compose up --build -d
 `pnpm exec lefthook install` を実行してください。
 
 - pre-commit: ステージしたファイルを Prettier で自動整形し、Oxlint で検査します。
-- pre-push: Web・API の型チェック、API の単体・HTTP テストを実行します。
+- pre-push: Web・API の型チェック、Web の検索ロジック、API の単体・HTTP テストを実行します。
 - lint は警告がある場合も失敗します。導入済みの `.agents/skills/` は整形・lint の対象外です。
 
 GitHub Actions は `main` 向け PR と `main` への push で、lint・整形・型チェック・

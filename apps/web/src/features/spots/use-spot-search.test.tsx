@@ -170,7 +170,7 @@ describe("地図操作に伴うスポット検索", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("半径確定で検索し、Enterとblurの重複を抑え、元の半径の新鮮な結果を再利用する", async () => {
+  it("同じ半径の重複適用を抑え、元の半径の新鮮な結果を再利用する", async () => {
     const narrow = { ...spot, id: 2, distanceMeters: 50 };
     fetchMock
       .mockResolvedValueOnce(response())
