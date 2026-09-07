@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Spot Finder",
-  description: "Spot Finderの開発環境の接続確認",
+  description: "地図を動かし、検索半径を指定して周辺のスポットを探索できます。",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
