@@ -55,6 +55,8 @@ services:
     command: ["pnpm", "--filter", "@spot-finder/web", "dev"]
     environment:
       API_URL: http://api:3001
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      GOOGLE_MAPS_MAP_ID: ${GOOGLE_MAPS_MAP_ID:-DEMO_MAP_ID}
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
