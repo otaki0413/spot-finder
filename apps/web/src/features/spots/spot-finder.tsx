@@ -13,6 +13,28 @@ import { INITIAL_CENTER, formatDistance } from "./nearby-spots";
 import { RadiusInput } from "./radius-input";
 import { useSpotSearch } from "./use-spot-search";
 
+function getSearchMessage(search: ReturnType<typeof useSpotSearch>) {
+  if (search.mapFailed) {
+    return "地図を表示できないため、検索を停止しています。";
+  }
+  if (!search.ready) {
+    return "地図が表示されると、周辺のスポットを検索します。";
+  }
+  if (search.moving) {
+    return "移動後に検索します";
+  }
+  if (search.searchFailed) {
+    return "スポットを取得できませんでした。もう一度お試しください。";
+  }
+  if (!search.spots) {
+    return "検索中…";
+  }
+  if (search.spots.length === 0) {
+    return "この範囲にスポットはありません。地図を移動するか、検索半径を広げてください";
+  }
+  return `${search.spots.length}件のスポットが見つかりました。`;
+}
+
 function SpotSearch({ apiKey, mapId }: { apiKey: string; mapId: string }) {
   const search = useSpotSearch();
 
@@ -130,19 +152,7 @@ function SpotSearch({ apiKey, mapId }: { apiKey: string; mapId: string }) {
               aria-atomic="true"
               className="px-5 py-4 text-sm leading-6 text-slate-600"
             >
-              {search.mapFailed
-                ? "地図を表示できないため、検索を停止しています。"
-                : !search.ready
-                  ? "地図が表示されると、周辺のスポットを検索します。"
-                  : search.moving
-                    ? "移動後に検索します"
-                    : search.searchFailed
-                      ? "スポットを取得できませんでした。もう一度お試しください。"
-                      : search.spots
-                        ? search.spots.length === 0
-                          ? "この範囲にスポットはありません。地図を移動するか、検索半径を広げてください"
-                          : `${search.spots.length}件のスポットが見つかりました。`
-                        : "検索中…"}
+              {getSearchMessage(search)}
               {search.searchFailed && (
                 <button
                   type="button"
