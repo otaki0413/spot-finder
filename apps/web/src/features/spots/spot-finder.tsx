@@ -10,8 +10,11 @@ import {
   Map,
 } from "@vis.gl/react-google-maps";
 import { INITIAL_CENTER, formatDistance } from "./nearby-spots";
+import { CenterAddress } from "./center-address";
 import { RadiusInput } from "./radius-input";
 import { useSpotSearch } from "./use-spot-search";
+
+const GOOGLE_MAPS_LIBRARIES = ["geocoding"];
 
 function getSearchMessage(search: ReturnType<typeof useSpotSearch>) {
   if (search.mapFailed) {
@@ -43,6 +46,7 @@ function SpotSearch({ apiKey, mapId }: { apiKey: string; mapId: string }) {
       apiKey={apiKey}
       language="ja"
       region="JP"
+      libraries={GOOGLE_MAPS_LIBRARIES}
       onError={search.failMap}
     >
       <section aria-label="スポット検索">
@@ -57,87 +61,94 @@ function SpotSearch({ apiKey, mapId }: { apiKey: string; mapId: string }) {
         </div>
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-          <div
-            aria-label="周辺スポットの地図"
-            className="relative h-[52svh] min-h-80 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 lg:h-[calc(100svh-240px)] lg:min-h-[480px]"
-          >
-            {search.mapFailed ? (
-              <p
-                role="alert"
-                className="m-5 rounded-lg bg-white p-5 text-sm leading-6 text-red-800"
-              >
-                地図を読み込めませんでした。ページを再読み込みしてください。
-              </p>
-            ) : (
-              <>
-                <Map
-                  defaultCenter={INITIAL_CENTER}
-                  defaultZoom={12}
-                  mapId={mapId}
-                  onCenterChanged={(event) =>
-                    search.centerChanged(event.detail.center)
-                  }
-                  onIdle={(event) => {
-                    const center = event.map.getCenter();
-                    if (center) search.idle(center.toJSON());
-                  }}
+          <div className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-100 lg:h-[max(500px,calc(100svh-240px))]">
+            <CenterAddress
+              center={search.center}
+              ready={search.ready}
+              mapFailed={search.mapFailed}
+            />
+            <div
+              aria-label="周辺スポットの地図"
+              className="relative h-[52svh] min-h-80 lg:h-auto lg:min-h-0 lg:flex-1"
+            >
+              {search.mapFailed ? (
+                <p
+                  role="alert"
+                  className="m-5 rounded-lg bg-white p-5 text-sm leading-6 text-red-800"
                 >
-                  <Circle
-                    center={search.center}
-                    radius={search.radiusKm * 1000}
-                    clickable={false}
-                    draggable={false}
-                    editable={false}
-                    strokeColor="#2563eb"
-                    strokeWeight={2}
-                    strokeOpacity={0.8}
-                    fillColor="#3b82f6"
-                    fillOpacity={0.08}
-                  />
-                  {search.spots?.map((spot) => (
-                    <AdvancedMarker
-                      key={spot.id}
-                      position={{ lat: spot.latitude, lng: spot.longitude }}
-                      title={spot.name}
-                      collisionBehavior={CollisionBehavior.REQUIRED}
-                    />
-                  ))}
-                </Map>
-                {!search.ready && (
-                  <p
-                    role="status"
-                    className="absolute left-4 top-4 rounded-lg bg-white px-4 py-3 text-sm shadow-sm"
+                  地図を読み込めませんでした。ページを再読み込みしてください。
+                </p>
+              ) : (
+                <>
+                  <Map
+                    defaultCenter={INITIAL_CENTER}
+                    defaultZoom={12}
+                    mapId={mapId}
+                    onCenterChanged={(event) =>
+                      search.centerChanged(event.detail.center)
+                    }
+                    onIdle={(event) => {
+                      const center = event.map.getCenter();
+                      if (center) search.idle(center.toJSON());
+                    }}
                   >
-                    地図を読み込んでいます…
-                  </p>
-                )}
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-                >
-                  <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
-                    <circle
-                      cx="13"
-                      cy="13"
-                      r="5"
-                      fill="white"
-                      stroke="#1e40af"
-                      strokeWidth="2"
+                    <Circle
+                      center={search.center}
+                      radius={search.radiusKm * 1000}
+                      clickable={false}
+                      draggable={false}
+                      editable={false}
+                      strokeColor="#2563eb"
+                      strokeWeight={2}
+                      strokeOpacity={0.8}
+                      fillColor="#3b82f6"
+                      fillOpacity={0.08}
                     />
-                    <path
-                      d="M13 1v6m0 12v6M1 13h6m12 0h6"
-                      stroke="#1e40af"
-                      strokeWidth="2"
-                    />
-                  </svg>
-                </div>
-              </>
-            )}
+                    {search.spots?.map((spot) => (
+                      <AdvancedMarker
+                        key={spot.id}
+                        position={{ lat: spot.latitude, lng: spot.longitude }}
+                        title={spot.name}
+                        collisionBehavior={CollisionBehavior.REQUIRED}
+                      />
+                    ))}
+                  </Map>
+                  {!search.ready && (
+                    <p
+                      role="status"
+                      className="absolute left-4 top-4 rounded-lg bg-white px-4 py-3 text-sm shadow-sm"
+                    >
+                      地図を読み込んでいます…
+                    </p>
+                  )}
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+                  >
+                    <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+                      <circle
+                        cx="13"
+                        cy="13"
+                        r="5"
+                        fill="white"
+                        stroke="#1e40af"
+                        strokeWidth="2"
+                      />
+                      <path
+                        d="M13 1v6m0 12v6M1 13h6m12 0h6"
+                        stroke="#1e40af"
+                        strokeWidth="2"
+                      />
+                    </svg>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           <section
             aria-labelledby="spots-heading"
-            className="min-w-0 rounded-xl border border-slate-200 bg-white lg:max-h-[max(480px,calc(100svh-240px))] lg:overflow-y-auto"
+            className="min-w-0 rounded-xl border border-slate-200 bg-white lg:max-h-[max(500px,calc(100svh-240px))] lg:overflow-y-auto"
           >
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 id="spots-heading" className="font-semibold text-slate-950">
