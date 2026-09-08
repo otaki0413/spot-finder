@@ -41,13 +41,16 @@ export function useCenterAddress(
     let appliedSequence = 0;
     let lastStartedAt = -Infinity;
     let scheduled: ReturnType<typeof setTimeout> | null = null;
-    let lastRequest: { id: number; center: Center; pending: boolean } | null =
-      null;
+    let lastRequest: { id: number; center: Center } | null = null;
     const timeouts = new Map<number, ReturnType<typeof setTimeout>>();
 
     function publish(next: AddressState) {
       snapshot = next;
-      setState(next);
+      setState((previous) =>
+        previous.result === next.result && previous.updating === next.updating
+          ? previous
+          : next,
+      );
     }
 
     function finish(
@@ -58,7 +61,6 @@ export function useCenterAddress(
       if (!active || !timeouts.has(id)) return;
       clearTimeout(timeouts.get(id));
       timeouts.delete(id);
-      if (lastRequest?.id === id) lastRequest.pending = false;
 
       // 最新要求だけに限定すると、通信が遅い間は移動中の住所が更新されなくなる。
       if (id <= appliedSequence) return;
@@ -79,7 +81,7 @@ export function useCenterAddress(
       const requestedCenter = target;
       const id = ++sequence;
       lastStartedAt = Date.now();
-      lastRequest = { id, center: requestedCenter, pending: true };
+      lastRequest = { id, center: requestedCenter };
       timeouts.set(
         id,
         setTimeout(
@@ -123,7 +125,11 @@ export function useCenterAddress(
             snapshot.result?.status === "success" ? snapshot.result : null,
           updating: true,
         });
-        if (lastRequest?.pending && sameCenter(lastRequest.center, target)) {
+        if (
+          lastRequest &&
+          timeouts.has(lastRequest.id) &&
+          sameCenter(lastRequest.center, target)
+        ) {
           if (scheduled !== null) clearTimeout(scheduled);
           scheduled = null;
           return;

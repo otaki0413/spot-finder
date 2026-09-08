@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { useMapsLibrary } from "@vis.gl/react-google-maps";
 import type { Center } from "./nearby-spots";
 import { useCenterAddress } from "./use-center-address";
@@ -13,17 +12,16 @@ export function CenterAddress({
   mapFailed: boolean;
 }) {
   const library = useMapsLibrary("geocoding");
-  const geocode = useMemo(() => {
-    if (!library) return null;
-    const geocoder = new library.Geocoder();
-    return async (location: Center) => {
-      const { results } = await geocoder.geocode({
-        location,
-        fulfillOnZeroResults: true,
-      });
-      return results[0]?.formatted_address ?? null;
-    };
-  }, [library]);
+  const geocoder = library ? new library.Geocoder() : null;
+  const geocode = geocoder
+    ? async (location: Center) => {
+        const { results } = await geocoder.geocode({
+          location,
+          fulfillOnZeroResults: true,
+        });
+        return results[0]?.formatted_address ?? null;
+      }
+    : null;
   const address = useCenterAddress(center, geocode, ready && !mapFailed);
   const result = address.result;
   const message = mapFailed
