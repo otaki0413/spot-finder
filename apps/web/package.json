@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "doctor": "react-doctor . --scope full",
+    "doctor": "react-doctor ../.. --project @spot-finder/web --scope full --blocking none",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

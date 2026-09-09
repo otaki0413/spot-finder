@@ -115,12 +115,9 @@ function SpotSearch({ apiKey, mapId }: { apiKey: string; mapId: string }) {
                     ))}
                   </Map>
                   {!search.ready && (
-                    <p
-                      role="status"
-                      className="absolute left-4 top-4 rounded-lg bg-white px-4 py-3 text-sm shadow-sm"
-                    >
+                    <output className="absolute left-4 top-4 rounded-lg bg-white px-4 py-3 text-sm shadow-sm">
                       地図を読み込んでいます…
-                    </p>
+                    </output>
                   )}
                   <div
                     aria-hidden="true"
