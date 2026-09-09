@@ -65,6 +65,7 @@ function SpotSearch({ apiKey, mapId }: { apiKey: string; mapId: string }) {
             <CenterAddress
               center={search.center}
               ready={search.ready}
+              moving={search.moving}
               mapFailed={search.mapFailed}
             />
             <div
@@ -168,6 +169,7 @@ function SpotSearch({ apiKey, mapId }: { apiKey: string; mapId: string }) {
                 <button
                   type="button"
                   onClick={search.retry}
+                  aria-label="スポット検索を再試行"
                   className="mt-3 block min-h-11 rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600"
                 >
                   再試行

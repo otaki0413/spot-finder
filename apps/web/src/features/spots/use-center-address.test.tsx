@@ -25,9 +25,15 @@ function setup(ready = true) {
   const wrapper = ({ children }: PropsWithChildren) => (
     <StrictMode>{children}</StrictMode>
   );
+  const initialProps: {
+    center: Center;
+    enabled: boolean;
+    geocode?: GeocodeAddress | null;
+  } = { center: INITIAL_CENTER, enabled: ready };
   const hook = renderHook(
-    ({ center, enabled }) => useCenterAddress(center, geocode, enabled),
-    { initialProps: { center: INITIAL_CENTER, enabled: ready }, wrapper },
+    ({ center, enabled, geocode: currentGeocode = geocode }) =>
+      useCenterAddress(center, currentGeocode, enabled),
+    { initialProps, wrapper },
   );
   return {
     ...hook,
@@ -59,6 +65,75 @@ afterEach(() => {
 });
 
 describe("地図中心の住所取得", () => {
+  it("取得関数の参照が変わっても、住所・取得間隔・応答順を維持する", async () => {
+    const hook = setup();
+    await advance(0);
+    await advance(100);
+    const replacement = vi.fn((center: Center) => hook.geocode(center));
+    hook.rerender({
+      center: INITIAL_CENTER,
+      enabled: true,
+      geocode: replacement,
+    });
+    await advance(0);
+    expect(hook.geocode).toHaveBeenCalledTimes(1);
+
+    hook.rerender({ center: centerB, enabled: true, geocode: replacement });
+    await advance(899);
+    expect(hook.geocode).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(replacement).toHaveBeenCalledExactlyOnceWith(centerB);
+    await hook.respond(1, "Bの住所");
+    await hook.respond(0, "古いAの住所");
+    expect(hook.result.current).toMatchObject({
+      result: { status: "success", address: "Bの住所" },
+      updating: false,
+    });
+
+    hook.rerender({
+      center: centerB,
+      enabled: true,
+      geocode: vi.fn((center: Center) => hook.geocode(center)),
+    });
+    await advance(1000);
+    expect(hook.geocode).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.result).toEqual({
+      status: "success",
+      address: "Bの住所",
+    });
+  });
+
+  it.each([
+    { name: "無効化", enabled: false, unavailable: false },
+    { name: "取得関数の未準備", enabled: true, unavailable: true },
+  ])(
+    "$nameから再開すると現在の中心を取得し、停止前の応答を無視する",
+    async ({ enabled, unavailable }) => {
+      const hook = setup();
+      await advance(0);
+      await hook.respond(0, "最初の住所");
+      hook.move(centerB);
+      await advance(1000);
+      hook.rerender({
+        center: centerB,
+        enabled,
+        geocode: unavailable ? null : hook.geocode,
+      });
+      expect(vi.getTimerCount()).toBe(0);
+      hook.rerender({ center: centerC, enabled: true, geocode: hook.geocode });
+      expect(hook.result.current.result).toBeNull();
+      await advance(0);
+      expect(hook.geocode).toHaveBeenLastCalledWith(centerC);
+      await hook.respond(1, "停止前のBの住所");
+      expect(hook.result.current.result).toBeNull();
+      await hook.respond(2, "再開後のCの住所");
+      expect(hook.result.current).toMatchObject({
+        result: { status: "success", address: "再開後のCの住所" },
+        updating: false,
+      });
+    },
+  );
+
   it("地図の準備後に初回取得し、同じ中心の再描画や時間経過で再取得しない", async () => {
     const lookup = setup(false);
     await advance(1000);

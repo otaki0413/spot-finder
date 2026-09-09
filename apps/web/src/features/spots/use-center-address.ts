@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { sameCenter, type Center } from "./nearby-spots";
 
 export const ADDRESS_INTERVAL_MS = 1000;
@@ -30,11 +30,15 @@ export function useCenterAddress(
 ) {
   const [state, setState] = useState(initialState);
   const lookup = useRef<AddressLookup | null>(null);
+  const available = enabled && geocode !== null;
+  // 取得関数が変わっても、取得間隔と進行中の問い合わせは維持する。
+  const requestAddress = useEffectEvent(
+    async (location: Center) => (await geocode?.(location)) ?? null,
+  );
 
   useEffect(() => {
-    if (!enabled || !geocode) return;
+    if (!available) return;
 
-    let active = true;
     let target: Center | null = null;
     let snapshot = initialState;
     let sequence = 0;
@@ -53,12 +57,8 @@ export function useCenterAddress(
       );
     }
 
-    function finish(
-      id: number,
-      requestedCenter: Center,
-      result: AddressResult,
-    ) {
-      if (!active || !timeouts.has(id)) return;
+    function finish(id: number, result: AddressResult) {
+      if (!timeouts.has(id)) return;
       clearTimeout(timeouts.get(id));
       timeouts.delete(id);
 
@@ -67,42 +67,34 @@ export function useCenterAddress(
       appliedSequence = id;
       publish({
         result,
-        updating:
-          !target ||
-          !sameCenter(requestedCenter, target) ||
-          id !== sequence ||
-          scheduled !== null,
+        updating: scheduled !== null || appliedSequence < sequence,
       });
     }
 
     function start() {
       scheduled = null;
-      if (!active || !target || !geocode) return;
+      if (!target) return;
       const requestedCenter = target;
       const id = ++sequence;
       lastStartedAt = Date.now();
       lastRequest = { id, center: requestedCenter };
       timeouts.set(
         id,
-        setTimeout(
-          () => finish(id, requestedCenter, { status: "error" }),
-          ADDRESS_TIMEOUT_MS,
-        ),
+        setTimeout(() => finish(id, { status: "error" }), ADDRESS_TIMEOUT_MS),
       );
 
       // Geocoderの通信は中断できない。期限切れ・破棄済みの応答はfinishで無視する。
       void (async () => {
         try {
-          const address = await geocode(requestedCenter);
+          const address = await requestAddress(requestedCenter);
           finish(
             id,
-            requestedCenter,
             address === null
               ? { status: "empty" }
               : { status: "success", address },
           );
         } catch {
-          finish(id, requestedCenter, { status: "error" });
+          finish(id, { status: "error" });
         }
       })();
     }
@@ -144,17 +136,17 @@ export function useCenterAddress(
     };
 
     return () => {
-      active = false;
       lookup.current = null;
       if (scheduled !== null) clearTimeout(scheduled);
       for (const timeout of timeouts.values()) clearTimeout(timeout);
       timeouts.clear();
     };
-  }, [geocode, enabled]);
+  }, [available]);
 
+  // 取得処理を再作成したときも、その直後に現在の中心を渡す。
   useEffect(() => {
     lookup.current?.move(center);
-  }, [center, geocode, enabled]);
+  }, [center, available]);
 
   function retry() {
     lookup.current?.retry();
