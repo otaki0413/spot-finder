@@ -139,19 +139,23 @@ docker compose up --build -d
 - pre-push: Web・API の型チェック、Web の検索ロジック、API の単体・HTTP テストを実行します。
 - lint は警告がある場合も失敗します。導入済みの `.agents/skills/` は整形・lint の対象外です。
 
-通常のOxlintでは、Webに限り `react-doctor/effect-needs-cleanup` も必須チェックとして実行します。
-`pnpm run doctor` はWeb全体を広く診断する補助コマンドです。指摘だけでは失敗せず、診断処理の実行失敗はエラーになります。
+通常のOxlintは `oxlint.config.ts` に設定し、組み込みの `correctness` ルールを基本にします。WebではReact・Hooks・React Compiler・Next.js・アクセシビリティの組み込みルールを使用します。
+React Doctorの `RECOMMENDED_RULES`・`NEXTJS_RULES`・`TANSTACK_QUERY_RULES` を組み込みルールと併用します。重複は自動排除せず、実際に支障が出るルールだけ個別に調整します。
+React・Next.js・React DoctorのルールはWebだけに適用し、APIでは共通のTypeScript・JavaScriptルールを実行します。
+`pnpm run doctor` は、lintを重ねずにWeb全体の重複JSXなどを解析する補助コマンドです。指摘だけでは失敗せず、診断処理の実行失敗はエラーになります。
 `pnpm doctor` はpnpm自体の診断コマンドなので、`run` を省略しないでください。
-通常lintとの一部重複を許容し、診断で見つかったルールの必須化は個別に判断します。Git hooksには追加診断を含めません。
+リポジトリルートを起点に `--project @spot-finder/web` で対象を指定し、ルートにある既存のGitHub Actions設定も検出できるようにしています。Git hooksには全体解析を含めません。
+ルート起点のCLIの終了判定にも報告のみの方針を適用するため、`--blocking none` を明示しています。
 
-Webの診断設定は `apps/web/doctor.config.ts` に置き、指摘を報告のみにする設定と、外部サービスによる依存関係診断の無効化だけを指定しています。
-スコアは標準どおり取得・表示し、除外ルールは必要になった場合に追加します。ローカルのCLIとOxlintプラグインは同じバージョンに揃えてください。
+Webの診断設定は `apps/web/doctor.config.ts` に置きます。`lint: false` はローカルCLIとGitHub Actionsに共通で適用し、指摘は報告のみ、外部サービスによる依存関係診断は無効にしています。
+未使用ファイル・export・依存関係などの任意の全体解析ルールは有効にしていません。スコアは残した解析範囲に対して取得・表示します。
+ローカルのCLI・Oxlintプラグイン・GitHub Actionの `version` は同じバージョンに揃えてください。
 
 GitHub Actions は `main` 向け PR と `main` への push で、lint・整形・型チェック・
 API テスト・実DBテスト・ビルドを実行します。別ジョブでは空の DB から Docker Compose で起動し、
 DB単独でのスポット200件の取込、API の DB 接続成功、DB・API再起動前後の件数・IDの一致、Web の HTTP 200 を確認します。
 この起動確認は画面操作のテストを含みません。
 
-React Doctor専用のworkflow（`.github/workflows/react-doctor.yml`）は[公式の最小構成](https://www.react.doctor/docs/ci-and-prs/github-actions-setup)を使用します。
+React Doctor専用のworkflow（`.github/workflows/react-doctor.yml`）は[公式の構成](https://www.react.doctor/docs/ci-and-prs/github-actions-setup)を基に、診断ツールのバージョンを固定しています。
 ActionがReactプロジェクトを自動検出し、PRでは新規の指摘、mainへのpushでは全体を診断します。
-要約・行コメント・コミットステータス、診断ツールのバージョンや終了判定は公式Actionの標準動作に従います。workflow独自の設定やインストール処理は追加していません。
+要約・行コメント・コミットステータスや終了判定は公式Actionの標準動作に従います。lintの必須チェックは通常のCIの `pnpm lint` が担当します。
