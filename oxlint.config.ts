@@ -22,7 +22,7 @@ export default defineConfig({
   overrides: [
     {
       files: ["apps/web/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
-      plugins: ["nextjs", "react", "jsx-a11y"],
+      plugins: ["typescript", "unicorn", "oxc", "nextjs", "react", "jsx-a11y"],
       jsPlugins: ["oxlint-plugin-react-doctor"],
       env: {
         browser: true,

@@ -144,6 +144,7 @@ React Doctorの `RECOMMENDED_RULES`・`NEXTJS_RULES`・`TANSTACK_QUERY_RULES` �
 React・Next.js・React DoctorのルールはWebだけに適用し、APIでは共通のTypeScript・JavaScriptルールを実行します。
 `pnpm run doctor` は、lintを重ねずにWeb全体の重複JSXなどを解析する補助コマンドです。指摘だけでは失敗せず、診断処理の実行失敗はエラーになります。
 `pnpm doctor` はpnpm自体の診断コマンドなので、`run` を省略しないでください。
+全ルールとファイルごとの詳細が必要な場合は、`pnpm run doctor --verbose` を使います。
 リポジトリルートを起点に `--project @spot-finder/web` で対象を指定し、ルートにある既存のGitHub Actions設定も検出できるようにしています。Git hooksには全体解析を含めません。
 ルート起点のCLIの終了判定にも報告のみの方針を適用するため、`--blocking none` を明示しています。
 
