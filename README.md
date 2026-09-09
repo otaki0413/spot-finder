@@ -144,8 +144,8 @@ docker compose up --build -d
 `pnpm doctor` はpnpm自体の診断コマンドなので、`run` を省略しないでください。
 通常lintとの一部重複を許容し、診断で見つかったルールの必須化は個別に判断します。Git hooksには追加診断を含めません。
 
-Webの診断設定は `apps/web/doctor.config.json` に置き、外部サービスによる依存関係診断・スコア送信を無効にしています。
-手動コマンドでは `--no-telemetry` でテレメトリーも無効にします。ローカルのCLIとOxlintプラグインは同じバージョンに揃えてください。
+Webの診断設定は `apps/web/doctor.config.ts` に置き、指摘を報告のみにする設定と、外部サービスによる依存関係診断の無効化だけを指定しています。
+スコアは標準どおり取得・表示し、除外ルールは必要になった場合に追加します。ローカルのCLIとOxlintプラグインは同じバージョンに揃えてください。
 
 GitHub Actions は `main` 向け PR と `main` への push で、lint・整形・型チェック・
 API テスト・実DBテスト・ビルドを実行します。別ジョブでは空の DB から Docker Compose で起動し、
