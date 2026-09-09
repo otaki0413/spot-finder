@@ -6,6 +6,7 @@
     "node": ">=24.15.0 <25"
   },
   "scripts": {
+    "doctor": "pnpm --filter @spot-finder/web run doctor",
     "lint": "oxlint . --deny-warnings",
     "lint:fix": "oxlint . --fix --deny-warnings",
     "format": "prettier --write .",
@@ -19,6 +20,7 @@
   "devDependencies": {
     "lefthook": "2.1.12",
     "oxlint": "1.58.0",
+    "oxlint-plugin-react-doctor": "0.9.13",
     "prettier": "3.9.6",
     "typescript": "6.0.3"
   }

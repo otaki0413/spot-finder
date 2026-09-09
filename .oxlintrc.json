@@ -17,13 +17,20 @@
     {
       "files": ["apps/web/**/*.{js,jsx,mjs,cjs,ts,tsx}"],
       "plugins": ["react", "nextjs", "jsx-a11y"],
+      "jsPlugins": [
+        {
+          "name": "react-doctor",
+          "specifier": "oxlint-plugin-react-doctor"
+        }
+      ],
       "env": {
         "browser": true,
         "node": true
       },
       "rules": {
         "react/rules-of-hooks": "error",
-        "react/exhaustive-deps": "warn"
+        "react/exhaustive-deps": "warn",
+        "react-doctor/effect-needs-cleanup": "error"
       }
     },
     {

@@ -109,6 +109,7 @@ curl 'http://localhost:3001/spots/nearby?latitude=35.6812&longitude=139.7671&rad
 ```sh
 pnpm install --frozen-lockfile
 pnpm lint          # lint
+pnpm run doctor    # Web全体の追加診断（指摘は報告のみ）
 pnpm format:check  # 整形チェック
 pnpm format        # 自動整形
 pnpm typecheck     # 型チェック
@@ -138,7 +139,19 @@ docker compose up --build -d
 - pre-push: Web・API の型チェック、Web の検索ロジック、API の単体・HTTP テストを実行します。
 - lint は警告がある場合も失敗します。導入済みの `.agents/skills/` は整形・lint の対象外です。
 
+通常のOxlintでは、Webに限り `react-doctor/effect-needs-cleanup` も必須チェックとして実行します。
+`pnpm run doctor` はWeb全体を広く診断する補助コマンドです。指摘だけでは失敗せず、診断処理の実行失敗はエラーになります。
+`pnpm doctor` はpnpm自体の診断コマンドなので、`run` を省略しないでください。
+通常lintとの一部重複を許容し、診断で見つかったルールの必須化は個別に判断します。Git hooksには追加診断を含めません。
+
+react-doctorの設定は `apps/web/doctor.config.json` で手動・CI共通にし、外部サービスによる依存関係診断・スコア送信を無効にしています。
+設定読込前のテレメトリーも、手動コマンドの `--no-telemetry` とCIの `REACT_DOCTOR_NO_TELEMETRY` で無効にします。
+更新時はWebのCLI、ルートのOxlintプラグイン、CIの `version` を同じバージョンに揃えてください。
+
 GitHub Actions は `main` 向け PR と `main` への push で、lint・整形・型チェック・
 API テスト・実DBテスト・ビルドを実行します。別ジョブでは空の DB から Docker Compose で起動し、
 DB単独でのスポット200件の取込、API の DB 接続成功、DB・API再起動前後の件数・IDの一致、Web の HTTP 200 を確認します。
 この起動確認は画面操作のテストを含みません。
+
+React Doctor専用のworkflow（`.github/workflows/react-doctor.yml`）では、PRで新しく発生した指摘を要約コメント1件にまとめて更新し、mainへのpushではWeb全体を診断してジョブのサマリーに表示します。
+行単位のコメントとコミットステータスは作成しません。指摘は報告のみですが、診断が完了しなかった場合はジョブを失敗させます。
