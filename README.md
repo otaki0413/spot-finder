@@ -144,14 +144,14 @@ docker compose up --build -d
 `pnpm doctor` はpnpm自体の診断コマンドなので、`run` を省略しないでください。
 通常lintとの一部重複を許容し、診断で見つかったルールの必須化は個別に判断します。Git hooksには追加診断を含めません。
 
-react-doctorの設定は `apps/web/doctor.config.json` で手動・CI共通にし、外部サービスによる依存関係診断・スコア送信を無効にしています。
-設定読込前のテレメトリーも、手動コマンドの `--no-telemetry` とCIの `REACT_DOCTOR_NO_TELEMETRY` で無効にします。
-更新時はWebのCLI、ルートのOxlintプラグイン、CIの `version` を同じバージョンに揃えてください。
+Webの診断設定は `apps/web/doctor.config.json` に置き、外部サービスによる依存関係診断・スコア送信を無効にしています。
+手動コマンドでは `--no-telemetry` でテレメトリーも無効にします。ローカルのCLIとOxlintプラグインは同じバージョンに揃えてください。
 
 GitHub Actions は `main` 向け PR と `main` への push で、lint・整形・型チェック・
 API テスト・実DBテスト・ビルドを実行します。別ジョブでは空の DB から Docker Compose で起動し、
 DB単独でのスポット200件の取込、API の DB 接続成功、DB・API再起動前後の件数・IDの一致、Web の HTTP 200 を確認します。
 この起動確認は画面操作のテストを含みません。
 
-React Doctor専用のworkflow（`.github/workflows/react-doctor.yml`）では、PRで新しく発生した指摘を要約コメント1件にまとめて更新し、mainへのpushではWeb全体を診断してジョブのサマリーに表示します。
-行単位のコメントとコミットステータスは作成しません。指摘は報告のみですが、診断が完了しなかった場合はジョブを失敗させます。
+React Doctor専用のworkflow（`.github/workflows/react-doctor.yml`）は[公式の最小構成](https://www.react.doctor/docs/ci-and-prs/github-actions-setup)を使用します。
+ActionがReactプロジェクトを自動検出し、PRでは新規の指摘、mainへのpushでは全体を診断します。
+要約・行コメント・コミットステータス、診断ツールのバージョンや終了判定は公式Actionの標準動作に従います。workflow独自の設定やインストール処理は追加していません。
