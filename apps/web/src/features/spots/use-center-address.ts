@@ -75,7 +75,8 @@ export function useCenterAddress(
       scheduled = null;
       if (!target) return;
       const requestedCenter = target;
-      const id = ++sequence;
+      sequence = sequence + 1;
+      const id = sequence;
       lastStartedAt = Date.now();
       lastRequest = { id, center: requestedCenter };
       timeouts.set(
@@ -87,12 +88,11 @@ export function useCenterAddress(
       void (async () => {
         try {
           const address = await requestAddress(requestedCenter);
-          finish(
-            id,
-            address === null
-              ? { status: "empty" }
-              : { status: "success", address },
-          );
+          if (address === null) {
+            finish(id, { status: "empty" });
+          } else {
+            finish(id, { status: "success", address });
+          }
         } catch {
           finish(id, { status: "error" });
         }
