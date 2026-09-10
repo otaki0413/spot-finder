@@ -8,6 +8,7 @@ export interface Center {
 export interface NearbySpot {
   id: number;
   name: string;
+  category: string;
   address: string;
   latitude: number;
   longitude: number;

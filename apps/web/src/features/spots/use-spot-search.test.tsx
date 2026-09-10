@@ -18,6 +18,7 @@ import { useSpotSearch } from "./use-spot-search";
 const spot: NearbySpot = {
   id: 1,
   name: "東京のスポット",
+  category: "観光名所",
   address: "東京都千代田区",
   latitude: INITIAL_CENTER.lat,
   longitude: INITIAL_CENTER.lng,
