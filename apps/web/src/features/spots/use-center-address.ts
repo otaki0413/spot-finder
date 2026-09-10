@@ -41,12 +41,12 @@ export function useCenterAddress(
 
     let target: Center | null = null;
     let snapshot = initialState;
-    let sequence = 0;
-    let appliedSequence = 0;
+    let latestId = 0;
+    let openId: number | null = null;
+    let openCenter: Center | null = null;
     let lastStartedAt = -Infinity;
     let scheduled: ReturnType<typeof setTimeout> | null = null;
-    let lastRequest: { id: number; center: Center } | null = null;
-    const timeouts = new Map<number, ReturnType<typeof setTimeout>>();
+    let timeout: ReturnType<typeof setTimeout> | null = null;
 
     function publish(next: AddressState) {
       snapshot = next;
@@ -58,30 +58,28 @@ export function useCenterAddress(
     }
 
     function finish(id: number, result: AddressResult) {
-      if (!timeouts.has(id)) return;
-      clearTimeout(timeouts.get(id));
-      timeouts.delete(id);
-
-      // 最新要求だけに限定すると、通信が遅い間は移動中の住所が更新されなくなる。
-      if (id <= appliedSequence) return;
-      appliedSequence = id;
-      publish({
-        result,
-        updating: scheduled !== null || appliedSequence < sequence,
-      });
+      // 最新の未確定な問い合わせ以外は採用しない。
+      if (id !== latestId || id !== openId) return;
+      openId = null;
+      openCenter = null;
+      if (timeout !== null) clearTimeout(timeout);
+      timeout = null;
+      publish({ result, updating: scheduled !== null });
     }
 
     function start() {
       scheduled = null;
       if (!target) return;
+      latestId = latestId + 1;
+      const id = latestId;
       const requestedCenter = target;
-      sequence = sequence + 1;
-      const id = sequence;
       lastStartedAt = Date.now();
-      lastRequest = { id, center: requestedCenter };
-      timeouts.set(
-        id,
-        setTimeout(() => finish(id, { status: "error" }), ADDRESS_TIMEOUT_MS),
+      openId = id;
+      openCenter = requestedCenter;
+      if (timeout !== null) clearTimeout(timeout);
+      timeout = setTimeout(
+        () => finish(id, { status: "error" }),
+        ADDRESS_TIMEOUT_MS,
       );
 
       // Geocoderの通信は中断できない。期限切れ・破棄済みの応答はfinishで無視する。
@@ -117,11 +115,7 @@ export function useCenterAddress(
             snapshot.result?.status === "success" ? snapshot.result : null,
           updating: true,
         });
-        if (
-          lastRequest &&
-          timeouts.has(lastRequest.id) &&
-          sameCenter(lastRequest.center, target)
-        ) {
+        if (openId !== null && openCenter && sameCenter(openCenter, target)) {
           if (scheduled !== null) clearTimeout(scheduled);
           scheduled = null;
           return;
@@ -137,9 +131,10 @@ export function useCenterAddress(
 
     return () => {
       lookup.current = null;
+      openId = null;
+      openCenter = null;
       if (scheduled !== null) clearTimeout(scheduled);
-      for (const timeout of timeouts.values()) clearTimeout(timeout);
-      timeouts.clear();
+      if (timeout !== null) clearTimeout(timeout);
     };
   }, [available]);
 

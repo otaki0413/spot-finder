@@ -65,7 +65,7 @@ afterEach(() => {
 });
 
 describe("地図中心の住所取得", () => {
-  it("取得関数の参照が変わっても、住所・取得間隔・応答順を維持する", async () => {
+  it("取得関数の参照が変わっても、住所・取得間隔と最新の採用を維持する", async () => {
     const hook = setup();
     await advance(0);
     await advance(100);
@@ -164,17 +164,15 @@ describe("地図中心の住所取得", () => {
     }
     expect(lookup.startedAt).toEqual([0, 1000, 2000, 3000]);
     await lookup.respond(1, "移動中の住所1");
-    expect(lookup.result.current).toMatchObject({
-      result: { address: "移動中の住所1" },
-      updating: true,
-    });
+    expect(lookup.result.current.result).toBeNull();
+    expect(lookup.result.current.updating).toBe(true);
     await lookup.respond(2, "移動中の住所2");
-    expect(lookup.result.current.result).toEqual({
-      status: "success",
-      address: "移動中の住所2",
-    });
+    expect(lookup.result.current.result).toBeNull();
     await lookup.respond(3, "最終地点の住所");
-    expect(lookup.result.current.updating).toBe(false);
+    expect(lookup.result.current).toMatchObject({
+      result: { status: "success", address: "最終地点の住所" },
+      updating: false,
+    });
     await advance(1000);
     expect(lookup.geocode).toHaveBeenCalledTimes(4);
   });
@@ -350,9 +348,13 @@ describe("地図中心の住所取得", () => {
     await advance(1000);
     lookup.move(INITIAL_CENTER);
     await lookup.respond(0, "最初のAの住所");
+    expect(lookup.result.current.result).toBeNull();
     expect(lookup.result.current.updating).toBe(true);
     await lookup.respond(1, "Bの住所");
-    expect(lookup.result.current.updating).toBe(true);
+    expect(lookup.result.current).toMatchObject({
+      result: { address: "Bの住所" },
+      updating: true,
+    });
     await advance(1000);
     expect(lookup.geocode).toHaveBeenLastCalledWith(INITIAL_CENTER);
     await lookup.respond(2, "最後のAの住所");
