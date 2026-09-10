@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useReducer } from "react";
+import { useEffect, useEffectEvent, useReducer, useRef } from "react";
 import { sameCenter, type Center } from "./nearby-spots";
 
 export const ADDRESS_INTERVAL_MS = 1000;
@@ -25,7 +25,7 @@ interface AddressState {
 }
 
 type AddressAction =
-  | { type: "start"; center: Center; now: number }
+  | { type: "start"; request: AddressRequest }
   | { type: "finish"; request: AddressRequest; result: AddressResult }
   | { type: "retry" }
   | { type: "stop" };
@@ -42,9 +42,9 @@ function reduce(state: AddressState, action: AddressAction): AddressState {
     case "start":
       return {
         ...state,
-        requested: action.center,
-        lastStartedAt: action.now,
-        open: { center: action.center, startedAt: action.now },
+        requested: action.request.center,
+        lastStartedAt: action.request.startedAt,
+        open: action.request,
       };
     case "finish":
       // 同じ座標への再問い合わせも区別するため、オブジェクトの同一性で判定する。
@@ -64,20 +64,59 @@ export function useCenterAddress(
   enabled: boolean,
 ) {
   const [state, dispatch] = useReducer(reduce, initialState);
+  const cancelRequest = useRef<(() => void) | null>(null);
   const available = enabled && geocode !== null;
   const needsRequest =
     available &&
     (state.requested === null || !sameCenter(state.requested, center));
-  const updating = needsRequest || state.open !== null;
+  const updating = state.result === null || needsRequest || state.open !== null;
 
   useEffect(() => {
     if (!available) return;
-    return () => dispatch({ type: "stop" });
+    return () => {
+      cancelRequest.current?.();
+      cancelRequest.current = null;
+      dispatch({ type: "stop" });
+    };
   }, [available]);
 
   // 待機中に中心が変わってもタイマーを延ばさず、開始時の最新の中心を使う。
   const start = useEffectEvent(() => {
-    dispatch({ type: "start", center, now: Date.now() });
+    if (!available) return;
+    cancelRequest.current?.();
+    const request = { center, startedAt: Date.now() };
+    dispatch({ type: "start", request });
+
+    // Geocoderの通信は中断できないため、不要になった応答は無視する。
+    let ignore = false;
+    const finish = (result: AddressResult) => {
+      if (ignore) return;
+      ignore = true;
+      clearTimeout(timeout);
+      dispatch({ type: "finish", request, result });
+    };
+    const timeout = setTimeout(
+      () => finish({ status: "error" }),
+      ADDRESS_TIMEOUT_MS,
+    );
+    cancelRequest.current = () => {
+      ignore = true;
+      clearTimeout(timeout);
+    };
+
+    // Reactの描画待ちを挟まず、時刻の記録と同じ処理内で通信を開始する。
+    void (async () => {
+      try {
+        const address = (await geocode?.(request.center)) ?? null;
+        finish(
+          address === null
+            ? { status: "empty" }
+            : { status: "success", address },
+        );
+      } catch {
+        finish({ status: "error" });
+      }
+    })();
   });
   useEffect(() => {
     if (!needsRequest) return;
@@ -85,41 +124,6 @@ export function useCenterAddress(
     const timer = setTimeout(() => start(), Math.max(0, delay));
     return () => clearTimeout(timer);
   }, [needsRequest, state.lastStartedAt]);
-
-  // 取得関数が差し替わっても、進行中の問い合わせはそのまま続ける。
-  const requestAddress = useEffectEvent(
-    async (location: Center) => (await geocode?.(location)) ?? null,
-  );
-  useEffect(() => {
-    const request = state.open;
-    if (!available || !request) return;
-
-    // Geocoderの通信は中断できないため、不要になった応答は無視する。
-    let ignore = false;
-    const finish = (result: AddressResult) => {
-      if (ignore) return;
-      ignore = true;
-      dispatch({ type: "finish", request, result });
-    };
-    const deadline = request.startedAt + ADDRESS_TIMEOUT_MS - Date.now();
-    const timeout = setTimeout(
-      () => finish({ status: "error" }),
-      Math.max(0, deadline),
-    );
-    requestAddress(request.center).then(
-      (address) =>
-        finish(
-          address === null
-            ? { status: "empty" }
-            : { status: "success", address },
-        ),
-      () => finish({ status: "error" }),
-    );
-    return () => {
-      ignore = true;
-      clearTimeout(timeout);
-    };
-  }, [available, state.open]);
 
   return {
     result:

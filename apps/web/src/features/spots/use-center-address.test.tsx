@@ -65,6 +65,38 @@ afterEach(() => {
 });
 
 describe("地図中心の住所取得", () => {
+  it.each([false, true])(
+    "地図またはGeocoderの準備中は読み込み状態を返す (ready: %s)",
+    (ready) => {
+      const { result } = renderHook(() =>
+        useCenterAddress(INITIAL_CENTER, null, ready),
+      );
+      expect(result.current).toMatchObject({ result: null, updating: true });
+    },
+  );
+
+  it("Reactの更新反映が遅れても、実際の取得開始から1秒あける", async () => {
+    const lookup = setup();
+    // タイマー発火後もact内で時間を進め、Reactの更新反映を遅らせる。
+    await advance(650);
+    lookup.move(centerB);
+    await advance(350);
+    expect(lookup.startedAt).toHaveLength(2);
+    expect(lookup.startedAt[1] - lookup.startedAt[0]).toBeGreaterThanOrEqual(
+      ADDRESS_INTERVAL_MS,
+    );
+  });
+
+  it("Reactの更新反映が遅れても、実際の取得開始から10秒は応答を待つ", async () => {
+    const lookup = setup();
+    await advance(650);
+    const remaining = lookup.startedAt[0] + ADDRESS_TIMEOUT_MS - Date.now();
+    await advance(remaining - 1);
+    expect(lookup.result.current.result).toBeNull();
+    await advance(1);
+    expect(lookup.result.current.result).toEqual({ status: "error" });
+  });
+
   it("取得関数の参照が変わっても、住所・取得間隔と最新の採用を維持する", async () => {
     const hook = setup();
     await advance(0);
