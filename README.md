@@ -1,162 +1,85 @@
 # Spot Finder
 
-Next.js / NestJS / PostgreSQL + PostGIS を使った周辺スポット検索アプリです。起動時に提供CSVを自動で取り込み、Google Mapsの地図と一覧で検索結果を表示します。
+地図を動かし、指定した半径内のスポットを探せるWebアプリです。検索結果を地図と一覧で表示し、移動中も地図中心の住所を更新します。
+
+Next.js / NestJS / PostgreSQLを使用しています。提供CSVの**200件**を初回起動時に自動で取り込みます（課題本文の「約500件」と異なりますが、提供ファイルをそのまま使用しています）。
 
 ## 環境構築
 
-Docker と Docker Compose v2 以降を用意し、Docker を起動してください。ポート 3000 / 3001 を使用します。
-
-ホストへのNode.js / pnpmのインストールは不要です。地図の表示にはGoogle MapsのAPIキーが必要です。
-
-1. Google CloudでMaps JavaScript APIとGeocoding APIを有効にし、請求先を設定したプロジェクトのブラウザ用APIキーを用意します。
-2. ルートの `.env.example` を `.env` にコピーし、`GOOGLE_MAPS_API_KEY` を設定します。
-3. キーのウェブサイト制限に `http://localhost:3000/*` を登録し、API制限でMaps JavaScript APIとGeocoding APIを許可します。別のホスト名・ポートで使う場合は、そのURLも許可します。
+必要なものは **Docker（Compose v2以降）** と **Google MapsのAPIキー** です。ホストへのNode.js・pnpmのインストールは不要です。
 
 ```sh
+git clone https://github.com/otaki0413/spot-finder.git
+cd spot-finder
 cp .env.example .env
 ```
 
-`GOOGLE_MAPS_MAP_ID` はAdvancedMarkerに必要なMap IDです。開発用にはGoogle公式の `DEMO_MAP_ID` を初期設定し、自分のJavaScript用Map IDにも変更できます。[Googleの設定手順](https://developers.google.com/maps/documentation/javascript/advanced-markers/start)
+Google Cloudで請求先を設定し、以下の準備をしてください。
 
-このキーはブラウザでGoogle Mapsを読み込むために使われる公開前提のキーです。上記の制限を設定し、サーバー専用キーとは分けてください。キーを含む `.env` はGit・Dockerイメージに含めません。キー未設定でもWeb・API・DBは起動しますが、地図には設定案内を表示します。
+| 設定                   | 内容                                            |
+| ---------------------- | ----------------------------------------------- |
+| 有効にするAPI          | Maps JavaScript API / Geocoding API             |
+| `.env`                 | `GOOGLE_MAPS_API_KEY` にブラウザ用APIキーを設定 |
+| キーのウェブサイト制限 | `http://localhost:3000/*`                       |
+| キーのAPI制限          | 上記2つのAPIのみ許可                            |
 
-PostGISの提供イメージは `linux/amd64` 向けです。Apple SiliconではDockerのエミュレーションを使うため、初回起動に時間がかかる場合があります。
+> APIキーを含む `.env` はGit・Dockerイメージに含めません。キーを設定しない場合、地図の代わりに設定案内を表示します。
+
+<details>
+<summary>Map ID・Apple Siliconについて</summary>
+
+- `GOOGLE_MAPS_MAP_ID` は初期値の `DEMO_MAP_ID` で動作確認できます。独自のMap IDを使う場合は [Googleの設定手順](https://developers.google.com/maps/documentation/javascript/advanced-markers/start) を参照してください。
+- PostGISイメージは `linux/amd64` 向けです。Apple Siliconではエミュレーションを使うため、初回起動に時間がかかる場合があります。
+
+</details>
 
 ## 実行手順
 
-リポジトリのルートで実行します。
+Dockerを起動した状態で、リポジトリのルートから実行します。ポート3000・3001を使用します。
 
 ```sh
 docker compose up
 ```
 
-- Web: <http://localhost:3000>
-- API: <http://localhost:3001/health>
+**[アプリを開く](http://localhost:3000)** — 東京駅を中心に、半径5kmのスポットが表示されます。
 
-Webに東京駅周辺の地図が表示され、半径5km以内のスポットが一覧に表示されれば起動完了です。API・DBの接続状態は `/health` で確認できます。
+### 動作確認
 
-環境変数を変更した場合は `docker compose up -d web` でWebコンテナを作り直し、ページを再読み込みしてください。地図用の設定はリクエスト時に読み込むため、キーをイメージのビルド時に埋め込む必要はありません。
+| 操作                     | 確認できること                                             |
+| ------------------------ | ---------------------------------------------------------- |
+| 地図を動かす             | 移動中に中心の住所が更新され、停止すると周辺スポットを検索 |
+| 半径を入力してEnter      | 円・マーカー・一覧が同じ条件で更新。小数も指定可能         |
+| 一覧を見る               | 半径内のスポットを中心点から近い順に表示                   |
+| スポットのない場所へ移動 | 0件の案内を表示。通信失敗時には再試行ボタンを表示          |
 
-DBの初回初期化でスポットを取り込み、DBの起動完了後にAPIを起動します。
+停止は `Ctrl+C`、コンテナの削除は `docker compose down` です。DBデータは保持されます。設定変更やDB再作成の手順は [開発・検証ガイド](docs/development.md) にまとめています。
 
-停止は `Ctrl+C`、コンテナの削除は `docker compose down` で行います。DB データは保持されます。**DB データも削除する場合だけ** `docker compose down --volumes` を使ってください。
+## 使用した主要ライブラリとその選定理由
 
-## 地図と一覧の操作
+Next.js（App Router）・Tailwind CSS・NestJS・TypeORM・PostgreSQLは課題指定の技術です。追加で採用した主な技術は以下のとおりです。
 
-- 地図の中心が移動すると古いマーカーと一覧を隠し、移動が止まった時点で検索します。中心が変わらないズーム操作では再検索しません。
-- 検索半径はkm単位で入力し、Enterキーまたはフォーカスを外す操作で確定します。正の有限値と小数を受け付け、不正入力では適用済みの半径を維持します。
-- 地図と一覧は同じ検索結果を使い、一覧には半径内の全件を地図中心から近い順に表示します。画面外のスポットも一覧に残ります。表示項目は名称・住所・地図中心からの距離です。
-- 半径変更時は円と結果を更新し、ズームを維持します。PCは地図と一覧を横並び、狭い画面では縦並びにします。
-- 検索中・0件・失敗を区別し、検索失敗時は「再試行」で同じ条件を再検索できます。地図自体の読み込み失敗時はブラウザの再読み込みを案内します。
-- 地図のすぐ上に地図中心の住所を表示します。Googleが返す先頭候補の日本語住所をそのまま使い、移動中も最大1秒に1回取得します。停止後は最終地点へ追従し、中心が変わらないズームや半径変更では再取得しません。
-- 住所の取得待ちは直前の住所と「更新中」を表示します。住所候補0件と取得失敗は区別し、どちらも古い住所を隠します。失敗時は住所欄の「再試行」を使えます。各問い合わせは10秒でタイムアウト扱いにし、自動リトライは行いません。
+| 技術                                      | 選定理由                                                                      |
+| ----------------------------------------- | ----------------------------------------------------------------------------- |
+| Google Maps / `@vis.gl/react-google-maps` | 地図表示と住所取得を同じ提供元に揃え、地図とReactの状態を連携しやすくするため |
+| TanStack Query                            | 検索条件ごとのキャッシュ、通信の中断、取得状態をまとめて管理するため          |
+| PostGIS                                   | 地表上の距離による半径検索と空間インデックスを利用するため                    |
 
-## 使用した主要ライブラリと選定理由
+## 実装時に特に工夫した点、および技術的な判断を行った箇所
 
-- `@vis.gl/react-google-maps`: 地図・AdvancedMarker・CircleとReactとの同期、イベント登録解除を任せ、アプリの検索状態の管理に集中するために採用しました。
-- TanStack Query: 検索条件ごとのキャッシュ、通信の中断、取得状態をまとめて管理します。
-- TypeORM / PostgreSQL + PostGIS: 既存のスポットデータを地表上の距離で絞り込みます。採用理由は [ADR](docs/adr/0001-use-postgis-for-spot-locations.md) を参照してください。
+- **起動だけでデータを準備**：CSV取込を単一トランザクションで行い、不正データがあれば部分的な取込を防ぎます。再起動時にはデータとIDを保持します。
+- **検索の正確性を維持**：地表上の距離で半径の境界を含めて検索します。地図と一覧は同じ結果を使い、条件変更前の遅い応答で表示が戻ることを防ぎます。
+- **不要な通信を削減**：スポット検索は地図停止時に実行し、同じ中心座標・半径の結果を5分間再利用します。
+- **住所の追従とコストを両立**：移動中の住所取得は最大1秒に1回にまとめ、停止後は最終地点へ追従します。Googleの住所データは表示に必要な結果だけを保持し、履歴キャッシュは作りません。
 
-## 実装時に特に工夫した点・技術的な判断
+サービス選定の比較・理由は [PostGISのADR](docs/adr/0001-use-postgis-for-spot-locations.md) と [地図サービスのADR](docs/adr/0002-map-and-geocoding-services.md) に記録しています。
 
-- ブラウザの `/api/spots/nearby` をNext.jsの `rewrites` でNestJSへ転送し、検索処理をAPIに集約しています。ページはServer Component、地図・入力・検索状態はClient Componentに分けています。
-- Google Mapsのイベントが続けて発生しても最新の条件を参照し、移動開始・半径変更で進行中の検索を中断します。中断前の成功・失敗が遅れて届いても表示を上書きしません。
-- 中心座標と半径が完全一致する結果を5分間再利用します。座標は丸めず、未使用となったキャッシュは5分後に削除します。時間経過だけで表示中の結果は消しません。
-- スポット検索の通信は初回の地図停止・条件変更・手動再試行から開始します。タブ復帰、再接続、自動リトライ、定期更新による検索通信を行いません。
-- このキャッシュは自前の周辺検索結果だけを対象にしています。具体的な合意事項と比較は [Issue #7](https://github.com/otaki0413/spot-finder/issues/7) に記録しています。
-- 住所はブラウザのGeocoderから取得し、停止後に動くスポット検索とは独立して制御します。1秒の待機中に続いた移動は最新中心へまとめ、微小な移動も丸めずに取得します。応答待ちでも新しい中心を問い合わせ、成功・失敗・0件を通して問い合わせ順に結果を採用することで、連続移動中の更新と古い応答の無視を両立します。
-- Googleの住所は画面表示に必要な結果だけをメモリに保持し、履歴キャッシュや永続保存は作りません。過去の地点へ戻った場合は再取得します。合意事項と利用条件への配慮は [Issue #8](https://github.com/otaki0413/spot-finder/issues/8) に記録しています。
+## 時間が足りず実装を簡略化した箇所や、今後の改善点
 
-## 簡略化した箇所・今後の改善点
+- マーカーと一覧のクリック選択連動、現在地取得、モバイル専用パネルは未実装です。
+- 微小移動の距離判定は加えず、中心地点への正確な追従を優先しました。通信量は取得間隔と検索キャッシュで抑えています。
+- Googleの住所候補は先頭の結果をそのまま表示します。海上などでは住所の代わりにPlus Codeが表示される場合があります。
+- 地図のAPIキー認証失敗を網羅する判定や自動復旧は未実装です。Composeは開発モードで起動します。
 
-- Geocoderの通信自体はキャンセルできないため、10秒を過ぎた応答と画面破棄後の応答をアプリ側で無視します。住所の取得頻度の制限は各画面単位です。
-- 海上などではGoogleが住所文字列としてPlus Code（位置を表すコード）を返す場合があり、その場合も加工せず表示します。
-- マーカーと一覧のクリックによる選択連動、現在地取得、モバイル専用の開閉パネルは実装していません。
-- 地図のAPIキー認証失敗を網羅する独自判定や、自動復旧処理は実装していません。キーの有効性と利用制限は設定時に確認してください。
+---
 
-## スポットの初期データ
-
-提供された [landit_coding_test_seed.csv](db/seed/landit_coding_test_seed.csv) の200件を使用します。課題本文の「約500件」とは件数が異なりますが、提供ファイルの内容をそのまま同梱しています。
-
-- SQLとCSVをDBコンテナに読み取り専用でマウントします。PostGISイメージによる拡張の有効化後に、[初期化SQL](db/init/20-init-spots.sql)を実行します。
-- PostgreSQL標準の `COPY` でCSVを読み込み、スポットテーブルの作成・全件の保存・空間インデックスの作成を1つのトランザクションで行います。
-- 初期化SQLはDBのデータディレクトリが空の初回だけ実行されます。ボリュームを保持した再起動では既存のデータとIDを保持します。
-- 必須項目の空欄、不正なCSV形式、範囲外・非数値の座標などがあれば、部分的なデータを残さず初期化に失敗します。原因は `docker compose logs db` で確認できます。`COPY` 中のエラーにはCSVの行番号も出力されます。
-- CSVは固定の初期データとして扱います。差し替え時の更新・削除同期や、手動で削除された一部データの補完は行いません。
-
-APIはTypeORMのEntityで既存テーブルを利用し、スキーマの変更やCSVの取込は行いません。取込完了テーブルやマイグレーション履歴テーブルも作成しません。
-
-既存ボリュームには、SQLやCSVを変更しても反映されません。また、初期化途中で失敗した場合も、再起動だけでは初期化SQLが再実行されません。開発用データをすべて削除してよい場合に限り、原因を修正したうえで `docker compose down --volumes` → `docker compose up` で作り直してください。
-
-座標は `geography(Point, 4326)` に保存し、半径検索に使用します。用語は [CONTEXT.md](CONTEXT.md)、PostGISの採用理由は [ADR](docs/adr/0001-use-postgis-for-spot-locations.md) を参照してください。
-
-CSV内のカンマ・引用符・改行は、PostgreSQLのCSV形式に沿って扱います。
-
-## 周辺検索API
-
-```sh
-curl 'http://localhost:3001/spots/nearby?latitude=35.6812&longitude=139.7671&radiusKm=1.5'
-```
-
-緯度（−90〜90）、経度（−180〜180）、検索半径（km）をすべて指定します。半径は正の有限数値で、小数も使えます。mへの変換後に非有限となる値は受け付けません。未指定・空欄・不正値・重複・未知のパラメータは400を返します。ただし、NestJS標準Pipeが検証前に除去する特殊キーは、この拒否条件の対象外です。
-
-地表上の距離が半径以下のスポットを全件、距離の昇順・同距離ならIDの昇順で返します。応答は `id`・`name`・`category`・`address`・`latitude`・`longitude`・`distanceMeters` を持つオブジェクトの配列です。距離はメートル単位で、表示用の丸めは行いません。該当なしは200と `[]`、DB検索の失敗は503と `Spot search unavailable` を返します。
-
-## 開発コマンド
-
-ホストで Node.js 24（24.15.0 以上）と pnpm 11.25.0 を用意し、リポジトリのルートで実行します。
-
-```sh
-pnpm install --frozen-lockfile
-pnpm lint          # lint
-pnpm run doctor    # Web全体の追加診断（指摘は報告のみ）
-pnpm format:check  # 整形チェック
-pnpm format        # 自動整形
-pnpm typecheck     # 型チェック
-pnpm test          # API の単体テスト・Web の検索ロジックのテスト
-pnpm test:e2e      # API の HTTP テスト
-pnpm test:integration # 実DBでの初期化・取込・周辺検索テスト（Dockerが必要）
-pnpm build         # API / Web のビルド
-```
-
-APIの単体・HTTPテストはDB接続をモックに差し替えています。Webのテストは検索半径の値、検索状態・通信中断・キャッシュに加え、住所取得の頻度、連続移動中の更新、応答順、失敗・0件・再試行、タイムアウト、画面破棄時の後処理を確認します。Vitest・React Testing Libraryの `renderHook` でロジックを確認し、単体テストでは画面表示・DOM操作・Google Mapsの描画を扱わず、実ネットワークにも接続しません。地図操作中の住所の追従とPC・スマートフォンの表示は実ブラウザで確認します。`test:integration` はTestcontainersでテスト専用のPostGISコンテナを起動し、DB単独での取込・Entity経由の保存内容・DB再起動時のデータ保持・不正データによる初期化の取消に加え、HTTP経由の周辺検索で距離境界・並び順・座標・距離・0件を確認します。開発用DBは使用しません。
-
-`apps/web/src`・`apps/api/src` の変更は自動反映されます。依存関係・設定・`apps/api/test` など、それ以外の変更は再ビルドしてください。
-
-```sh
-docker compose up --build -d
-```
-
-ログは `docker compose logs -f` で確認できます。
-
-## コード品質のチェック
-
-ホストで `pnpm install` を実行すると、Lefthook が Git hooks を設定します。
-既存の `node_modules` を再利用して hooks が設定されない場合は、
-`pnpm exec lefthook install` を実行してください。
-
-- pre-commit: ステージしたファイルを Prettier で自動整形し、Oxlint で検査します。
-- pre-push: Web・API の型チェック、Web の検索ロジック、API の単体・HTTP テストを実行します。
-- lint は警告がある場合も失敗します。導入済みの `.agents/skills/` は整形・lint の対象外です。
-
-通常のOxlintは `oxlint.config.ts` に設定し、組み込みの `correctness` ルールを基本にします。WebではReact・Hooks・React Compiler・Next.js・アクセシビリティの組み込みルールを使用します。
-React Doctorの `RECOMMENDED_RULES`・`NEXTJS_RULES`・`TANSTACK_QUERY_RULES` を組み込みルールと併用します。重複は自動排除せず、実際に支障が出るルールだけ個別に調整します。
-React・Next.js・React DoctorのルールはWebだけに適用し、APIでは共通のTypeScript・JavaScriptルールを実行します。
-`pnpm run doctor` は、lintを重ねずにWeb全体の重複JSXなどを解析する補助コマンドです。指摘だけでは失敗せず、診断処理の実行失敗はエラーになります。
-`pnpm doctor` はpnpm自体の診断コマンドなので、`run` を省略しないでください。
-全ルールとファイルごとの詳細が必要な場合は、`pnpm run doctor --verbose` を使います。
-リポジトリルートを起点に `--project @spot-finder/web` で対象を指定し、ルートにある既存のGitHub Actions設定も検出できるようにしています。Git hooksには全体解析を含めません。
-ルート起点のCLIの終了判定にも報告のみの方針を適用するため、`--blocking none` を明示しています。
-
-Webの診断設定は `apps/web/doctor.config.ts` に置きます。`lint: false` はローカルCLIとGitHub Actionsに共通で適用し、指摘は報告のみ、外部サービスによる依存関係診断は無効にしています。
-未使用ファイル・export・依存関係などの任意の全体解析ルールは有効にしていません。スコアは残した解析範囲に対して取得・表示します。
-ローカルのCLI・Oxlintプラグイン・GitHub Actionの `version` は同じバージョンに揃えてください。
-
-GitHub Actions は `main` 向け PR と `main` への push で、lint・整形・型チェック・
-API テスト・実DBテスト・ビルドを実行します。別ジョブでは空の DB から Docker Compose で起動し、
-DB単独でのスポット200件の取込、API の DB 接続成功、DB・API再起動前後の件数・IDの一致、Web の HTTP 200 を確認します。
-この起動確認は画面操作のテストを含みません。
-
-React Doctor専用のworkflow（`.github/workflows/react-doctor.yml`）は[公式の構成](https://www.react.doctor/docs/ci-and-prs/github-actions-setup)を基に、診断ツールのバージョンを固定しています。
-ActionがReactプロジェクトを自動検出し、PRでは新規の指摘、mainへのpushでは全体を診断します。
-要約・行コメント・コミットステータスや終了判定は公式Actionの標準動作に従います。lintの必須チェックは通常のCIの `pnpm lint` が担当します。
+コードを確認する際の補足： [構成](docs/architecture.md) · [データ・API](docs/data-and-api.md) · [開発・検証](docs/development.md) · [用語集](CONTEXT.md)
