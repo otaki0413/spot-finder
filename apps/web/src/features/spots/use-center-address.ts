@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useReducer } from "react";
 import { sameCenter, type Center } from "./nearby-spots";
 
 export const ADDRESS_INTERVAL_MS = 1000;
@@ -11,141 +11,120 @@ type AddressResult =
   | { status: "empty" }
   | { status: "error" };
 
+interface AddressRequest {
+  center: Center;
+  startedAt: number;
+}
+
 interface AddressState {
+  // 0件・失敗でも同じ中心は自動で取り直さない。
+  requested: Center | null;
+  lastStartedAt: number;
+  open: AddressRequest | null;
   result: AddressResult | null;
-  updating: boolean;
 }
 
-interface AddressLookup {
-  move: (center: Center) => void;
-  retry: () => void;
-}
+type AddressAction =
+  | { type: "start"; center: Center; now: number }
+  | { type: "finish"; request: AddressRequest; result: AddressResult }
+  | { type: "retry" }
+  | { type: "stop" };
 
-const initialState: AddressState = { result: null, updating: true };
+const initialState: AddressState = {
+  requested: null,
+  lastStartedAt: -Infinity,
+  open: null,
+  result: null,
+};
+
+function reduce(state: AddressState, action: AddressAction): AddressState {
+  switch (action.type) {
+    case "start":
+      return {
+        ...state,
+        requested: action.center,
+        lastStartedAt: action.now,
+        open: { center: action.center, startedAt: action.now },
+      };
+    case "finish":
+      // 同じ座標への再問い合わせも区別するため、オブジェクトの同一性で判定する。
+      if (state.open !== action.request) return state;
+      return { ...state, open: null, result: action.result };
+    case "retry":
+      if (state.open || state.result?.status !== "error") return state;
+      return { ...state, requested: null, result: null };
+    case "stop":
+      return initialState;
+  }
+}
 
 export function useCenterAddress(
   center: Center,
   geocode: GeocodeAddress | null,
   enabled: boolean,
 ) {
-  const [state, setState] = useState(initialState);
-  const lookup = useRef<AddressLookup | null>(null);
+  const [state, dispatch] = useReducer(reduce, initialState);
   const available = enabled && geocode !== null;
-  // 取得関数が変わっても、取得間隔と進行中の問い合わせは維持する。
-  const requestAddress = useEffectEvent(
-    async (location: Center) => (await geocode?.(location)) ?? null,
-  );
+  const needsRequest =
+    available &&
+    (state.requested === null || !sameCenter(state.requested, center));
+  const updating = needsRequest || state.open !== null;
 
   useEffect(() => {
     if (!available) return;
-
-    let target: Center | null = null;
-    let snapshot = initialState;
-    let latestId = 0;
-    let openId: number | null = null;
-    let openCenter: Center | null = null;
-    let lastStartedAt = -Infinity;
-    let scheduled: ReturnType<typeof setTimeout> | null = null;
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-
-    function publish(next: AddressState) {
-      snapshot = next;
-      setState((previous) =>
-        previous.result === next.result && previous.updating === next.updating
-          ? previous
-          : next,
-      );
-    }
-
-    function finish(id: number, result: AddressResult) {
-      // 最新の未確定な問い合わせ以外は採用しない。
-      if (id !== latestId || id !== openId) return;
-      openId = null;
-      openCenter = null;
-      if (timeout !== null) clearTimeout(timeout);
-      timeout = null;
-      publish({ result, updating: scheduled !== null });
-    }
-
-    function start() {
-      scheduled = null;
-      if (!target) return;
-      latestId = latestId + 1;
-      const id = latestId;
-      const requestedCenter = target;
-      lastStartedAt = Date.now();
-      openId = id;
-      openCenter = requestedCenter;
-      if (timeout !== null) clearTimeout(timeout);
-      timeout = setTimeout(
-        () => finish(id, { status: "error" }),
-        ADDRESS_TIMEOUT_MS,
-      );
-
-      // Geocoderの通信は中断できない。期限切れ・破棄済みの応答はfinishで無視する。
-      void (async () => {
-        try {
-          const address = await requestAddress(requestedCenter);
-          if (address === null) {
-            finish(id, { status: "empty" });
-          } else {
-            finish(id, { status: "success", address });
-          }
-        } catch {
-          finish(id, { status: "error" });
-        }
-      })();
-    }
-
-    function schedule() {
-      if (scheduled !== null) return;
-      // 待機中の移動を最新の中心へまとめる。初回も予約し、Effect再実行時に破棄できる。
-      scheduled = setTimeout(
-        start,
-        Math.max(0, lastStartedAt + ADDRESS_INTERVAL_MS - Date.now()),
-      );
-    }
-
-    lookup.current = {
-      move(nextCenter) {
-        if (target && sameCenter(target, nextCenter)) return;
-        target = nextCenter;
-        publish({
-          result:
-            snapshot.result?.status === "success" ? snapshot.result : null,
-          updating: true,
-        });
-        if (openId !== null && openCenter && sameCenter(openCenter, target)) {
-          if (scheduled !== null) clearTimeout(scheduled);
-          scheduled = null;
-          return;
-        }
-        schedule();
-      },
-      retry() {
-        if (snapshot.updating || snapshot.result?.status !== "error") return;
-        publish(initialState);
-        schedule();
-      },
-    };
-
-    return () => {
-      lookup.current = null;
-      openId = null;
-      openCenter = null;
-      if (scheduled !== null) clearTimeout(scheduled);
-      if (timeout !== null) clearTimeout(timeout);
-    };
+    return () => dispatch({ type: "stop" });
   }, [available]);
 
-  // 取得処理を再作成したときも、その直後に現在の中心を渡す。
+  // 待機中に中心が変わってもタイマーを延ばさず、開始時の最新の中心を使う。
+  const start = useEffectEvent(() => {
+    dispatch({ type: "start", center, now: Date.now() });
+  });
   useEffect(() => {
-    lookup.current?.move(center);
-  }, [center, available]);
+    if (!needsRequest) return;
+    const delay = state.lastStartedAt + ADDRESS_INTERVAL_MS - Date.now();
+    const timer = setTimeout(() => start(), Math.max(0, delay));
+    return () => clearTimeout(timer);
+  }, [needsRequest, state.lastStartedAt]);
 
-  function retry() {
-    lookup.current?.retry();
-  }
+  // 取得関数が差し替わっても、進行中の問い合わせはそのまま続ける。
+  const requestAddress = useEffectEvent(
+    async (location: Center) => (await geocode?.(location)) ?? null,
+  );
+  useEffect(() => {
+    const request = state.open;
+    if (!available || !request) return;
 
-  return { ...state, retry };
+    // Geocoderの通信は中断できないため、不要になった応答は無視する。
+    let ignore = false;
+    const finish = (result: AddressResult) => {
+      if (ignore) return;
+      ignore = true;
+      dispatch({ type: "finish", request, result });
+    };
+    const deadline = request.startedAt + ADDRESS_TIMEOUT_MS - Date.now();
+    const timeout = setTimeout(
+      () => finish({ status: "error" }),
+      Math.max(0, deadline),
+    );
+    requestAddress(request.center).then(
+      (address) =>
+        finish(
+          address === null
+            ? { status: "empty" }
+            : { status: "success", address },
+        ),
+      () => finish({ status: "error" }),
+    );
+    return () => {
+      ignore = true;
+      clearTimeout(timeout);
+    };
+  }, [available, state.open]);
+
+  return {
+    result:
+      state.result?.status === "success" || !updating ? state.result : null,
+    updating,
+    retry: () => dispatch({ type: "retry" }),
+  };
 }
