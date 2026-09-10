@@ -105,13 +105,17 @@ function SpotSearch({ apiKey, mapId }: { apiKey: string; mapId: string }) {
                       fillColor="#3b82f6"
                       fillOpacity={0.08}
                     />
-                    {search.spots?.map((spot) => (
+                    {search.spots?.map((spot, index) => (
                       <AdvancedMarker
                         key={spot.id}
                         position={{ lat: spot.latitude, lng: spot.longitude }}
-                        title={spot.name}
+                        title={`${index + 1}. ${spot.name}`}
                         collisionBehavior={CollisionBehavior.REQUIRED}
-                      />
+                      >
+                        <div className="flex h-7 min-w-7 items-center justify-center rounded-full bg-slate-900 px-1.5 text-xs font-semibold text-white shadow">
+                          {index + 1}
+                        </div>
+                      </AdvancedMarker>
                     ))}
                   </Map>
                   {!search.ready && (
@@ -151,15 +155,20 @@ function SpotSearch({ apiKey, mapId }: { apiKey: string; mapId: string }) {
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 id="spots-heading" className="font-semibold text-slate-950">
                 周辺のスポット
+                {search.spots && ` · ${search.spots.length}件`}
               </h2>
               <p className="mt-1 text-xs text-slate-600">
-                地図中心から近い順・距離は直線距離
+                近い順・地図中心からの直線距離
               </p>
             </div>
             <div
               aria-live="polite"
               aria-atomic="true"
-              className="px-5 py-4 text-sm leading-6 text-slate-600"
+              className={
+                search.spots && search.spots.length > 0
+                  ? "sr-only"
+                  : "px-5 py-4 text-sm leading-6 text-slate-600"
+              }
             >
               {getSearchMessage(search)}
               {search.searchFailed && (
@@ -174,16 +183,18 @@ function SpotSearch({ apiKey, mapId }: { apiKey: string; mapId: string }) {
               )}
             </div>
             {search.spots && search.spots.length > 0 && (
-              <ul
-                aria-label="検索結果"
-                className="divide-y divide-slate-100 border-t border-slate-100"
-              >
-                {search.spots.map((spot) => (
+              <ul aria-label="検索結果" className="divide-y divide-slate-100">
+                {search.spots.map((spot, index) => (
                   <li key={spot.id} className="px-5 py-4">
                     <div className="flex items-start justify-between gap-3">
-                      <h3 className="min-w-0 break-words font-semibold text-slate-900">
-                        {spot.name}
-                      </h3>
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="mt-0.5 flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
+                          {index + 1}
+                        </span>
+                        <h3 className="min-w-0 break-words font-semibold text-slate-900">
+                          {spot.name}
+                        </h3>
+                      </div>
                       <span className="shrink-0 text-sm tabular-nums text-blue-700">
                         {formatDistance(spot.distanceMeters)}
                       </span>
